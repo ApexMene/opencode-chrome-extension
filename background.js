@@ -374,6 +374,17 @@ async function pollOpencodeBridge() {
       await sendToTab(tabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>{});
       const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
       if (gid) await chrome.tabGroups.update(gid, { title: "Opencode \u23F3", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
+      if (j.click && j.click.x != null) {
+        const cx=j.click.x, cy=j.click.y;
+        await sendToTab(tabId, { type: "UPDATE_PHANTOM_CURSOR", x: cx, y: cy }).catch(()=>{});
+        await new Promise(r=>setTimeout(r, 500));
+        await chrome.scripting.executeScript({ target:{tabId}, func:(xx,yy)=>{
+          const el=document.elementFromPoint(xx,yy);
+          const v=el?.closest?.('video') || document.querySelector('video');
+          if(v){ v.pause(); if(!v.paused) v.click(); return 'paused '+v.paused; }
+          el?.click(); return el?.tagName;
+        }, args:[cx,cy]}).catch(()=>null);
+      }
       _opBridgeState = st;
       return;
     }
