@@ -8,9 +8,7 @@
   }
   function dispatchInput(el, text){
     el.focus();
-    el.select?.();
-    // try execCommand first (works for synthetic)
-    try{ document.execCommand('selectAll', false, null); }catch{}
+    try{ el.setSelectionRange(0, el.value.length); }catch{ try{ el.select?.(); }catch{} }
     try{ document.execCommand('insertText', false, text); }catch{}
 
     if(el.value !== text){
@@ -20,6 +18,9 @@
     }
     el.dispatchEvent(new Event('input', {bubbles:true}));
     el.dispatchEvent(new Event('change', {bubbles:true}));
+  }
+  function sendToTabCursor(x,y){
+    try{ return chrome.runtime.sendMessage({type:'UPDATE_PHANTOM_CURSOR', x, y}).catch(()=>{}); }catch{ return Promise.resolve(); }
   }
   function pressEnter(el){
     for(const t of ['keydown','keypress','keyup']){
@@ -55,6 +56,49 @@
           }, 250);
         }
         sendResponse({success:true});
+      })();
+      return true;
+    }
+    if(msg.type === 'OPENCODE_CLICK_TOP_VIDEO'){
+      (async()=>{
+        const waitFeed = ()=>new Promise(res=>{
+          const done=()=>document.querySelectorAll('ytd-rich-item-renderer').length>=5;
+          if(done()) return res(true);
+          let n=0;
+          const iv=setInterval(()=>{ if(done()||++n>40){clearInterval(iv);res(done());} },250);
+        });
+        await waitFeed();
+        const parseViews=(s)=>{
+          if(!s) return -1;
+          const m=s.match(/([\d.,]+)\s*(Mln|M|K|mila)?/i);
+          if(!m) return -1;
+          let num=parseFloat(m[1].replace(/\./g,'').replace(',','.'));
+          if(isNaN(num)) return -1;
+          const mult=(m[2]||'').toLowerCase();
+          if(mult==='m'||mult.startsWith('mln')) num*=1e6;
+          else if(mult==='k'||mult.startsWith('mila')) num*=1e3;
+          return num;
+        };
+        let best=null,bestViews=-1,bestTitle='';
+        document.querySelectorAll('ytd-rich-item-renderer').forEach(card=>{
+          const lines=(card.innerText||'').split('\n');
+          for(const ln of lines){
+            if(/visualizzazioni|views/i.test(ln)){
+              const v=parseViews(ln);
+              if(v>bestViews){
+                const link=card.querySelector('a#video-title');
+                if(link){bestViews=v;best=link;bestTitle=link.title||'';}
+              }
+              break;
+            }
+          }
+        });
+        if(!best){ sendResponse({success:false,error:'no videos'}); return; }
+        const rect=best.getBoundingClientRect();
+        const cx=Math.round(rect.left+rect.width/2), cy=Math.round(rect.top+rect.height/2);
+        await sendToTabCursor(cx,cy);
+        setTimeout(()=>best.click(),600);
+        sendResponse({success:true,views:bestViews,title:bestTitle});
       })();
       return true;
     }

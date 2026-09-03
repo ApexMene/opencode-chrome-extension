@@ -418,6 +418,26 @@ async function pollOpencodeBridge() {
           await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit}).catch(()=>{});
         });
       }
+      if (j.top_video) {
+        let isHome = false;
+        try { const u = new URL(workTab.url); isHome = u.hostname.includes('youtube.com') && (u.pathname === '/' || u.pathname === ''); } catch {}
+        if (!isHome) {
+          const navKey = tabId + '>home';
+          if (globalThis._lastHomeNavKey !== navKey) {
+            globalThis._lastHomeNavKey = navKey;
+            await chrome.tabs.update(tabId, { url: 'https://www.youtube.com/' }).catch(()=>{});
+          }
+        } else {
+          const topKey = tabId + '>topvideo';
+          if (globalThis._lastTopKey !== topKey) {
+            globalThis._lastTopKey = topKey;
+            await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' }).catch(async()=>{
+              await chrome.scripting.executeScript({ target:{tabId}, files:['content-scripts/opencode-input.js'] }).catch(()=>{});
+              await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' }).catch(()=>{});
+            });
+          }
+        }
+      }
       if (j.navigate) {
         await chrome.tabs.update(tabId, {url: j.navigate}).catch(()=>{});
       }
