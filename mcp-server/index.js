@@ -20,7 +20,7 @@ const crypto = require("crypto");
 const readline = require("readline");
 
 const WS_PORT = 7421;
-const CMD_TIMEOUT_MS = 20000;
+const CMD_TIMEOUT_MS = 120000;
 const VERSION = "0.5.0";
 
 const log = (...a) => console.error("[opencode-browser]", ...a);
