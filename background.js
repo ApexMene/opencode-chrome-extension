@@ -1,10 +1,7 @@
-// Opencode background service worker — eredita da Claude 1.0.90_0
-// Gestisce: tabGroups "Opencode" (blue), START/STOP agent, bridge verso opencode (ws/http localhost:4096)
 console.log("[Opencode bg] service worker start");
 
-// ---- constants ----
 const OPENCODE_GROUP_TITLE = "Opencode";
-const OPENCODE_GROUP_COLOR = "blue"; // chrome.tabGroups.Color
+const OPENCODE_GROUP_COLOR = "blue";
 const OPENCODE_HTTP = "http://localhost:4096";
 const OPENCODE_WS = "ws://localhost:4096";
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -13,14 +10,11 @@ let opencodeSocket = null;
 let heartbeatTimer = null;
 let currentGroupId = null;
 
-// ---- helpers ----
 async function getOrCreateOpencodeGroup(tabIds) {
-  // Try to find existing Opencode group
   const groups = await chrome.tabGroups.query({ title: OPENCODE_GROUP_TITLE }).catch(() => []);
   if (groups && groups.length > 0) {
     const g = groups[0];
     currentGroupId = g.id;
-    // Add tabs to existing group if provided
     if (tabIds && tabIds.length) {
       await chrome.tabs.group({ tabIds, groupId: g.id }).catch((e) => console.warn("[Opencode bg] group add failed", e));
     }
@@ -28,9 +22,7 @@ async function getOrCreateOpencodeGroup(tabIds) {
     console.log("[Opencode bg] reused group", g.id);
     return g.id;
   }
-  // Create new group from tabIds
   if (!tabIds || !tabIds.length) {
-    // Use current active tab as seed
     const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!active) {
       console.warn("[Opencode bg] no active tab to seed group");
@@ -50,7 +42,6 @@ async function getOrCreateOpencodeGroup(tabIds) {
 }
 
 async function setOpencodeGroupState(state) {
-  // state: "working" -> "Opencode ⏳" (al lavoro), "done" -> "Opencode ✓" (finito), "idle" -> "Opencode" — identico a Claude ma blu jeans + brand Opencode
   const titleMap = { working: "Opencode ⏳", done: "Opencode ✓", idle: "Opencode" };
   const title = titleMap[state] || OPENCODE_GROUP_TITLE;
   const colorMap = { working: "blue", done: "grey", idle: "blue" };
@@ -75,7 +66,6 @@ async function setOpencodeGroupState(state) {
 
 async function removeOpencodeGroup() {
   if (currentGroupId != null) {
-    // Ungroup all tabs in group (keep tabs open, remove grouping)
     const tabs = await chrome.tabs.query({ groupId: currentGroupId }).catch(() => []);
     if (tabs.length) {
       await chrome.tabs.ungroup(tabs.map((t) => t.id)).catch(() => {});
@@ -127,7 +117,6 @@ function connectOpencodeWs() {
       console.log("[Opencode bg] opencode WS msg", ev.data?.slice?.(0, 500));
       try {
         const data = JSON.parse(ev.data);
-        // Translate opencode events to indicator messages
         if (data.type === "agent_start" || data.type === "START_AGENT") {
           const tabId = data.targetTabId || null;
           if (tabId) await getOrCreateOpencodeGroup([tabId]);
@@ -206,7 +195,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (t === "STATIC_INDICATOR_HEARTBEAT") {
-      // Keep static pill alive — same as Claude
       console.log("[Opencode bg] HEARTBEAT from", sender.tab?.id);
       sendResponse({ success: true });
       return;
@@ -306,24 +294,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true; // keep channel open for async sendResponse
 });
 
-// Sidepanel open on action click (mirror Claude)
+// Claude-faithful trigger — no autoGroup invented: group creates only when sidepanel opens
+// Claude does: Oi(tabId) -> setOptions + open + Ci(tabId) -> findGroupByTab or createGroup
 chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
 
-async function autoGroupTab(tabId, url) {
-  if (!tabId || tabId < 0) return;
-  if (url && (url.startsWith("chrome://") || url.startsWith("brave://") || url.startsWith("chrome-extension://"))) return;
+async function ensureGroupForTab(tabId) {
+  if (!tabId) return null;
   try {
-    await getOrCreateOpencodeGroup([tabId]);
-    await setOpencodeGroupState("working");
-    await sendToTab(tabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId });
-    console.log("[Opencode bg] auto-grouped tab", tabId, url?.slice(0,60));
-  } catch (e) { console.warn("[Opencode bg] auto-group failed", e); }
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return null;
+    if (tab.groupId !== -1 && tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
+      const g = await chrome.tabGroups.get(tab.groupId).catch(() => null);
+      if (g && (g.title === "Opencode" || g.title === "Opencode ⏳" || g.title === "Opencode ✓")) {
+        return tab.groupId;
+      }
+    }
+  } catch {}
+  return await getOrCreateOpencodeGroup([tabId]);
 }
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === "complete" && tab.url && tab.url.includes("youtube.com/watch")) autoGroupTab(tabId, tab.url);
+
+chrome.action?.onClicked?.addListener(async (tab) => {
+  const tabId = tab?.id;
+  if (!tabId) return;
+  try { await chrome.sidePanel.setOptions({ tabId, path: `sidepanel.html?tabId=${encodeURIComponent(tabId)}`, enabled: true }); } catch {}
+  try { await chrome.sidePanel.open({ tabId }); } catch {}
+  await ensureGroupForTab(tabId);
 });
-chrome.tabs.onCreated.addListener((tab) => {
-  if (currentGroupId != null && tab.id) setTimeout(() => autoGroupTab(tab.id, tab.pendingUrl || tab.url), 800);
+
+chrome.commands?.onCommand?.addListener(async (cmd) => {
+  if (cmd !== "toggle-side-panel") return;
+  const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!active?.id) return;
+  try { await chrome.sidePanel.setOptions({ tabId: active.id, path: `sidepanel.html?tabId=${encodeURIComponent(active.id)}`, enabled: true }); } catch {}
+  try { await chrome.sidePanel.open({ tabId: active.id }); } catch {}
+  await ensureGroupForTab(active.id);
 });
 
 // Alarms: periodic heartbeat to keep SW alive + poll opencode
