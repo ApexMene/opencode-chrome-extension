@@ -429,8 +429,8 @@ async function doTopVideo(tabId, workTab) {
     await onWorkingUI(tabId);
   }
   const cr = await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' });
-  if (cr && cr.success) return "top-video-clicked:" + (cr.title || "") + " views=" + (cr.views ?? "?");
-  return "top-video-failed:" + (cr?.error || "no-ack");
+  if (cr && cr.success) return "top-video-clicked:" + (cr.title || "") + " views=" + (cr.views ?? "?") + " mode=" + (cr.mode || "?") + " feed=" + (cr.feed ?? "?");
+  return "top-video-failed:" + (cr?.error || "no-ack") + " feed=" + (cr?.feed ?? "?") + " url=" + (cr?.url || "?");
 }
 
 // WS sidecar (MCP server on 127.0.0.1:7421) — primary live channel, poll 6421 stays as fallback.

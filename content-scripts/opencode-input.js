@@ -72,13 +72,15 @@
     }
     if(msg.type === 'OPENCODE_CLICK_TOP_VIDEO'){
       (async()=>{
+        const CARDS = ['ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-grid-video-renderer', 'ytd-compact-video-renderer'];
+        const countFeed = ()=>CARDS.reduce((n,sel)=>n+document.querySelectorAll(sel).length, 0);
         const waitFeed = ()=>new Promise(res=>{
-          const done=()=>document.querySelectorAll('ytd-rich-item-renderer').length>=5;
-          if(done()) return res(true);
+          if(countFeed()>=3) return res(true);
           let n=0;
-          const iv=setInterval(()=>{ if(done()||++n>40){clearInterval(iv);res(done());} },250);
+          const iv=setInterval(()=>{ if(countFeed()>=3||++n>60){clearInterval(iv);res(countFeed()>=3);} },250);
         });
-        await waitFeed();
+        const fedOk = await waitFeed();
+        const feedCount = countFeed();
         const parseViews=(s)=>{
           if(!s) return -1;
           const m=s.match(/([\d.,]+)\s*(Mln|M|K|mila)?/i);
@@ -90,8 +92,8 @@
           else if(mult==='k'||mult.startsWith('mila')) num*=1e3;
           return num;
         };
-        let best=null,bestViews=-1,bestTitle='';
-        document.querySelectorAll('ytd-rich-item-renderer').forEach(card=>{
+        let best=null,bestViews=-1,bestTitle='',bestMode='none';
+        document.querySelectorAll(CARDS.join(',')).forEach(card=>{
           const lines=(card.innerText||'').split('\n');
           for(const ln of lines){
             if(/visualizzazioni|views/i.test(ln)){
@@ -104,12 +106,16 @@
             }
           }
         });
-        if(!best){ sendResponse({success:false,error:'no videos'}); return; }
+        if(!best){
+          const fb = document.querySelector('a#video-title');
+          if(fb){ best = fb; bestViews = -2; bestTitle = fb.title||''; bestMode = 'first-fallback'; }
+          else { sendResponse({success:false,error:'no videos',feed:feedCount,fedOk,url:location.href}); return; }
+        }
         const rect=best.getBoundingClientRect();
         const cx=Math.round(rect.left+rect.width/2), cy=Math.round(rect.top+rect.height/2);
         await sendToTabCursor(cx,cy);
         setTimeout(()=>best.click(),600);
-        sendResponse({success:true,views:bestViews,title:bestTitle});
+        sendResponse({success:true,views:bestViews,title:bestTitle,mode:bestMode||'most-viewed',feed:feedCount,url:location.href});
       })();
       return true;
     }
