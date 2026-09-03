@@ -467,6 +467,48 @@ async function doTopVideo(tabId, workTab) {
   return "top-video-failed:" + (cr?.error || "no-ack") + " feed=" + (cr?.feed ?? "?") + " url=" + (cr?.url || "?");
 }
 
+// CDP computer tool (like Claude's `computer`): real mouse/keyboard/screenshot via
+// chrome.debugger. Attach -> op -> detach every time, so the "is debugging" infobar
+// only flashes during the action. Phantom cursor moves first so the user sees it.
+async function cdpWith(tabId, fn) {
+  await chrome.debugger.attach({ tabId }, "1.3").catch(() => {});
+  try { return await fn({ tabId }); }
+  finally { await chrome.debugger.detach({ tabId }).catch(() => {}); }
+}
+async function doCdpClick(tabId, x, y) {
+  await sendToTab(tabId, { type: "UPDATE_PHANTOM_CURSOR", x, y }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 300));
+  return cdpWith(tabId, async (t) => {
+    const send = (m, p) => chrome.debugger.sendCommand(t, m, p);
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 120));
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+    return "cdp-clicked " + x + "," + y;
+  });
+}
+async function doCdpType(tabId, text) {
+  return cdpWith(tabId, async (t) => {
+    try {
+      await chrome.debugger.sendCommand(t, "Input.insertText", { text });
+      return "cdp-typed " + text.length + " chars";
+    } catch {
+      for (const ch of text.slice(0, 200)) {
+        await chrome.debugger.sendCommand(t, "Input.dispatchKeyEvent", { type: "keyDown", text: ch }).catch(() => {});
+        await chrome.debugger.sendCommand(t, "Input.dispatchKeyEvent", { type: "keyUp" }).catch(() => {});
+      }
+      return "cdp-typed-fallback " + text.length + " chars";
+    }
+  });
+}
+async function doCdpShot(tabId) {
+  const b64 = await cdpWith(tabId, async (t) => {
+    const r = await chrome.debugger.sendCommand(t, "Page.captureScreenshot", { format: "jpeg", quality: 60 });
+    return r?.data || "";
+  });
+  return b64 ? ("data:image/jpeg;base64," + b64) : "shot-empty";
+}
+
 // WS sidecar (MCP server on 127.0.0.1:7421) — primary live channel, poll 6421 stays as fallback.
 const OPENCODE_WS_SIDECAR = "ws://127.0.0.1:7421";
 let _scWs = null, _scRetry = null;
@@ -482,7 +524,7 @@ function ensureSidecarWs() {
 }
 function scheduleSidecarRetry() { if (_scRetry) return; _scRetry = setTimeout(() => { _scRetry = null; ensureSidecarWs(); }, 5000); }
 function sidecarAck(id, ok, result, error) {
-  try { _scWs?.send(JSON.stringify({ id, ok, result: String(result ?? "ok").slice(0, 2000), error: error ? String(error).slice(0, 500) : undefined })); } catch {}
+  try { _scWs?.send(JSON.stringify({ id, ok, result: String(result ?? "ok").slice(0, 600000), error: error ? String(error).slice(0, 500) : undefined })); } catch {}
 }
 async function handleSidecarMsg(raw) {
   let m; try { m = JSON.parse(raw); } catch { return; }
@@ -512,6 +554,9 @@ async function handleSidecarMsg(raw) {
       case "type":
       case "type_text": { await onWorkingUI(tabId); const r = await doTypeText(tabId, m.text, m.submit !== false); const ok = !String(r).startsWith("type-failed"); return sidecarAck(m.id, ok, r, ok ? undefined : r); }
       case "top_video": { const r = await doTopVideo(tabId, tab); const ok = String(r).startsWith("top-video-clicked"); return sidecarAck(m.id, ok, r, ok ? undefined : r); }
+      case "cdp_click": { await onWorkingUI(tabId); const r = await doCdpClick(tabId, m.x, m.y); return sidecarAck(m.id, true, r); }
+      case "cdp_type": { await onWorkingUI(tabId); const r = await doCdpType(tabId, m.text || ""); return sidecarAck(m.id, true, r); }
+      case "cdp_shot": { const r = await doCdpShot(tabId); return sidecarAck(m.id, true, r); }
       case "debug_ping": return sidecarAck(m.id, true, "pong-sw");
       case "snapshot": {
         const rs = await chrome.scripting.executeScript({ target:{tabId}, func:()=>({ title: document.title, url: location.href }) }).catch(()=>null);

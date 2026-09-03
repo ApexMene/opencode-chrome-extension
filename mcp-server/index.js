@@ -150,6 +150,9 @@ const TOOLS = [
   { name: "browser_snapshot", description: "Bridge status: extension connected, current state, last tool result.", inputSchema: { type: "object", properties: {} } },
   { name: "browser_debug_tabs", description: "List tabs as seen by the extension service worker.", inputSchema: { type: "object", properties: {} } },
   { name: "browser_debug_ping", description: "Ping the extension service worker through the sidecar (proves SW alive + WS path).", inputSchema: { type: "object", properties: {} } },
+  { name: "browser_cdp_click", description: "REAL CDP mouse click at x,y (chrome.debugger, like Claude computer tool). Phantom cursor moves first.", inputSchema: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"] } },
+  { name: "browser_cdp_type", description: "REAL CDP keyboard typing into the focused element (click it first with browser_cdp_click).", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } },
+  { name: "browser_cdp_shot", description: "REAL CDP screenshot (jpeg base64) of the active tab, like Claude computer captureScreenshot.", inputSchema: { type: "object", properties: {} } },
 ];
 
 async function runTool(name, args) {
