@@ -136,7 +136,12 @@ function sendCmd(cmd) {
       pending.delete(id);
       resolve({ id, ok: false, result: "ack timeout" });
     }, CMD_TIMEOUT_MS);
-    pending.set(id, { resolve, timer });
+    // resolve only on ok=true; ok=false acks (e.g. a SW with no groupable tab)
+    // are ignored while we keep waiting for a real success until timeout
+    pending.set(id, { resolve: (ack) => {
+      if (ack && ack.ok) { clearTimeout(timer); pending.delete(id); resolve(ack); }
+      else log(`ignoring ok=false ack id=${id} result=${String((ack && ack.result) || "").slice(0, 80)} error=${String((ack && ack.error) || "").slice(0, 160)} — still waiting`);
+    }, timer });
     broadcast({ ...cmd, id });
   });
 }
