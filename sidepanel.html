@@ -6,21 +6,21 @@
   <title>Opencode</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    :root { --purple: #7C3AED; --purple-light: #A78BFA; --bg: #0F0F0F; --card: #1A1A1A; --text: #E8E8E8; --muted: #888; --border: #2A2A2A; }
+    :root { --opencode-blue: #4A7BA7; --opencode-blue-light: #7EB0D6; --bg: #0F0F0F; --card: #1A1A1A; --text: #E8E8E8; --muted: #888; --border: #2A2A2A; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
     header { padding: 16px 20px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
-    header .logo { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #7C3AED, #4F46E5); display: grid; place-items: center; font-size: 18px; }
+    header .logo { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #4A7BA7, #4A7BA7); display: grid; place-items: center; font-size: 18px; }
     header h1 { font-size: 16px; font-weight: 700; }
     header p { font-size: 12px; color: var(--muted); }
     main { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 14px; }
-    .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--purple-light); background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3); padding: 4px 10px; border-radius: 999px; align-self: flex-start; }
-    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--purple); box-shadow: 0 0 8px rgba(124,58,237,0.7); }
+    .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--opencode-blue-light); background: rgba(74,123,167,0.15); border: 1px solid rgba(74,123,167,0.3); padding: 4px 10px; border-radius: 999px; align-self: flex-start; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--opencode-blue); box-shadow: 0 0 8px rgba(74,123,167,0.7); }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
     .card h2 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
     .card p { font-size: 12px; color: var(--muted); line-height: 1.5; }
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 11px 16px; border-radius: 10px; border: 1px solid transparent; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-    .btn-primary { background: var(--purple); color: white; }
-    .btn-primary:hover { background: #6D28D9; }
+    .btn-primary { background: var(--opencode-blue); color: white; }
+    .btn-primary:hover { background: #3D6A93; }
     .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
     .btn-ghost:hover { background: var(--card); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -34,9 +34,9 @@
     .opencode-box header { padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
     .opencode-box iframe { width: 100%; height: 360px; border: 0; background: #111; }
     .hint { font-size: 11px; color: var(--muted); line-height: 1.4; }
-    code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; background: rgba(124,58,237,0.12); padding: 2px 5px; border-radius: 4px; color: var(--purple-light); }
+    code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; background: rgba(74,123,167,0.12); padding: 2px 5px; border-radius: 4px; color: var(--opencode-blue-light); }
     footer { padding: 10px 16px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); text-align: center; }
-    a { color: var(--purple-light); text-decoration: none; }
+    a { color: var(--opencode-blue-light); text-decoration: none; }
     a:hover { text-decoration: underline; }
   </style>
 </head>
@@ -54,7 +54,7 @@
 
     <div class="card">
       <h2>Gruppo schede</h2>
-      <p>Crea/riusa gruppo <code>Opencode</code> viola (chrome.tabGroups) e raggruppa tab corrente. Visibile nella barra schede come Claude.</p>
+      <p>Crea/riusa gruppo <code>Opencode</code> blu jeans (chrome.tabGroups) e raggruppa tab corrente. Visibile nella barra schede come Claude.</p>
       <div style="height:10px"></div>
       <button id="btn-group" class="btn btn-ghost">📑 Crea gruppo Opencode</button>
       <button id="btn-dissolve" class="btn btn-ghost" style="margin-top:8px; font-size:12px;">Sciogli gruppo</button>
@@ -62,9 +62,13 @@
 
     <div class="card">
       <h2>Glow + phantom cursor</h2>
-      <p>Bordo glow viola + cursore fantasma visibile su pagina come Claude quando agent lavora. Namespace <code>opencode-phantom-cursor</code>, colore <code>#7C3AED</code>.</p>
+      <p>Bordo glow blu jeans + cursore fantasma visibile su pagina come Claude quando agent lavora. Namespace <code>opencode-phantom-cursor</code>, colore <code>#4A7BA7</code>.</p>
       <div style="height:10px"></div>
       <button id="btn-glow" class="btn btn-primary">✨ Attiva glow su tab corrente</button>
+      <div class="row" style="margin-top:8px;">
+        <button id="btn-working" class="btn btn-ghost" style="font-size:12px;" title="Opencode al lavoro — clessidra blu jeans (come Claude ma per opencode)">⏳ Opencode</button>
+        <button id="btn-done" class="btn btn-ghost" style="font-size:12px;" title="Opencode finito — spunta ✓ poi torna Opencode">✓ Opencode</button>
+      </div>
       <div class="row" style="margin-top:8px;">
         <button id="btn-cursor-demo" class="btn btn-ghost" style="font-size:12px;">Muovi cursore demo</button>
         <button id="btn-stop" class="btn btn-ghost" style="font-size:12px;">■ Stop</button>
@@ -83,7 +87,7 @@
 
     <p class="hint">Bridge: <code>ws://localhost:4096</code> / <code>http://localhost:4096</code>. Se opencode non gira, glow funziona comunque in locale.</p>
     <div class="divider"></div>
-    <p class="hint">Clonato da <code>fcoeoabgfenejglbffodgkkbkcdhcgfn/1.0.90_0</code> — permissions/host_permissions identici. Rebrand: <code>#D97757 → #7C3AED</code>, <code>claude-phantom-cursor → opencode-phantom-cursor</code>.</p>
+    <p class="hint">Clonato da <code>fcoeoabgfenejglbffodgkkbkcdhcgfn/1.0.90_0</code> — permissions/host_permissions identici. Rebrand: <code>#D97757 → #4A7BA7</code>, <code>claude-phantom-cursor → opencode-phantom-cursor</code>.</p>
   </main>
 
   <footer>v0.1.0 · <a href="https://github.com" target="_blank">Load unpacked</a> da brave://extensions</footer>

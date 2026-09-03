@@ -63,7 +63,7 @@ $("#btn-glow")?.addEventListener("click", async () => {
     // Use background helper (creates group + injects indicator)
     const r = await chrome.runtime.sendMessage({ type: "OPENCODE_ACTIVATE_GLOW" });
     if (r?.success) {
-      setStatus("Glow attivo ✓ — vedi bordo viola + cursor su pagina", true);
+      setStatus("Glow attivo ✓ — vedi bordo blu jeans + cursor su pagina", true);
     } else {
       // Fallback: direct scripting injection
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -85,6 +85,22 @@ $("#btn-glow")?.addEventListener("click", async () => {
   }
 });
 
+$("#btn-working")?.addEventListener("click", async () => {
+  setStatus("Stato → Opencode ⏳ — agente al lavoro…");
+  try {
+    await chrome.runtime.sendMessage({ type: "OPENCODE_SET_WORKING" });
+    setStatus("Gruppo → Opencode ⏳ — al lavoro + glow", true);
+  } catch (e) { setStatus(e.message, false); }
+});
+
+$("#btn-done")?.addEventListener("click", async () => {
+  setStatus("Stato → Opencode ✓ — finito…");
+  try {
+    await chrome.runtime.sendMessage({ type: "OPENCODE_SET_DONE" });
+    setStatus("Gruppo → Opencode ✓ — fatto (torna Opencode in 4s)", true);
+  } catch (e) { setStatus(e.message, false); }
+});
+
 $("#btn-stop")?.addEventListener("click", async () => {
   setStatus("Stop agent…");
   try {
@@ -103,7 +119,7 @@ $("#btn-cursor-demo")?.addEventListener("click", async () => {
     await chrome.tabs.sendMessage(tab.id, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tab.id }).catch(() => {});
     const w = 800, h = 450;
     let x = 100, y = 100;
-    setStatus("Demo cursore — guarda phantom viola muoversi…", true);
+    setStatus("Demo cursore — guarda phantom blu jeans muoversi…", true);
     const int = setInterval(async () => {
       x = (x + 120) % w;
       y = y + 60 > h ? 100 : y + 40;

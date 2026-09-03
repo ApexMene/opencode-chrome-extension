@@ -1,10 +1,10 @@
 // Opencode background service worker — eredita da Claude 1.0.90_0
-// Gestisce: tabGroups "Opencode" (purple), START/STOP agent, bridge verso opencode (ws/http localhost:4096)
+// Gestisce: tabGroups "Opencode" (blue), START/STOP agent, bridge verso opencode (ws/http localhost:4096)
 console.log("[Opencode bg] service worker start");
 
 // ---- constants ----
 const OPENCODE_GROUP_TITLE = "Opencode";
-const OPENCODE_GROUP_COLOR = "purple"; // chrome.tabGroups.Color
+const OPENCODE_GROUP_COLOR = "blue"; // chrome.tabGroups.Color
 const OPENCODE_HTTP = "http://localhost:4096";
 const OPENCODE_WS = "ws://localhost:4096";
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -45,8 +45,32 @@ async function getOrCreateOpencodeGroup(tabIds) {
   if (groupId == null || groupId === -1) return null;
   await chrome.tabGroups.update(groupId, { title: OPENCODE_GROUP_TITLE, color: OPENCODE_GROUP_COLOR });
   currentGroupId = groupId;
-  console.log("[Opencode bg] created group", groupId, "title=Opencode color=purple");
+  console.log("[Opencode bg] created group", groupId, "title=Opencode color=blue");
   return groupId;
+}
+
+async function setOpencodeGroupState(state) {
+  // state: "working" -> "Opencode ⏳" (al lavoro), "done" -> "Opencode ✓" (finito), "idle" -> "Opencode" — identico a Claude ma blu jeans + brand Opencode
+  const titleMap = { working: "Opencode ⏳", done: "Opencode ✓", idle: "Opencode" };
+  const title = titleMap[state] || OPENCODE_GROUP_TITLE;
+  const colorMap = { working: "blue", done: "grey", idle: "blue" };
+  const color = colorMap[state] || OPENCODE_GROUP_COLOR;
+  const groups = await chrome.tabGroups.query({ title: OPENCODE_GROUP_TITLE }).catch(() => []);
+  const allTitles = ["Opencode", "Opencode ⏳", "Opencode ✓"];
+  let allGroups = [];
+  for (const t of allTitles) {
+    const gs = await chrome.tabGroups.query({ title: t }).catch(() => []);
+    allGroups.push(...gs);
+  }
+  const seen = new Set();
+  allGroups = allGroups.filter((g) => { if (seen.has(g.id)) return false; seen.add(g.id); return true; });
+  if (allGroups.length === 0 && currentGroupId == null) return null;
+  const target = allGroups[0] || (currentGroupId != null ? { id: currentGroupId } : null);
+  if (!target) return null;
+  await chrome.tabGroups.update(target.id, { title, color }).catch(() => {});
+  currentGroupId = target.id;
+  console.log(`[Opencode bg] group state -> ${state} (${title}, ${color})`);
+  return target.id;
 }
 
 async function removeOpencodeGroup() {
@@ -59,11 +83,12 @@ async function removeOpencodeGroup() {
     currentGroupId = null;
     console.log("[Opencode bg] group dissolved (ungrouped)");
   } else {
-    // Fallback: query by title
-    const groups = await chrome.tabGroups.query({ title: OPENCODE_GROUP_TITLE }).catch(() => []);
-    for (const g of groups) {
-      const tabs = await chrome.tabs.query({ groupId: g.id }).catch(() => []);
-      if (tabs.length) await chrome.tabs.ungroup(tabs.map((t) => t.id)).catch(() => {});
+        for (const t of ["Opencode", "Opencode ⏳", "Opencode ✓"]) {
+      const groups = await chrome.tabGroups.query({ title: t }).catch(() => []);
+      for (const g of groups) {
+        const tabs = await chrome.tabs.query({ groupId: g.id }).catch(() => []);
+        if (tabs.length) await chrome.tabs.ungroup(tabs.map((t) => t.id)).catch(() => {});
+      }
     }
   }
 }
@@ -139,12 +164,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     const t = msg?.type;
 
-    if (t === "START_AGENT" || t === "SHOW_AGENT_INDICATORS") {
+     if (t === "START_AGENT" || t === "SHOW_AGENT_INDICATORS") {
       const targetTabId = msg.targetTabId ?? sender.tab?.id ?? (await chrome.tabs.query({ active: true, currentWindow: true }).then((a) => a[0]?.id));
       if (targetTabId) await getOrCreateOpencodeGroup([targetTabId]);
       else await getOrCreateOpencodeGroup(null);
+      await setOpencodeGroupState("working");
       await sendToTab(targetTabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: targetTabId });
-      // Also broadcast glow
       connectOpencodeWs();
       pingOpencodeHttp();
       sendResponse({ success: true, groupId: currentGroupId });
@@ -153,8 +178,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (t === "STOP_AGENT" || t === "HIDE_AGENT_INDICATORS") {
       await sendToTab(msg.targetTabId ?? sender.tab?.id, { type: "HIDE_AGENT_INDICATORS" });
-      // Optionally dissolve group on stop — keep grouped but hide indicator; user can close group manually
-      // await removeOpencodeGroup();
+      await setOpencodeGroupState("idle");
+      sendResponse({ success: true });
+      return;
+    }
+
+    if (t === "OPENCODE_SET_WORKING") {
+      await setOpencodeGroupState("working");
+      await sendToTab(msg.targetTabId ?? sender.tab?.id, { type: "SHOW_AGENT_INDICATORS", ownerTabId: msg.targetTabId });
+      sendResponse({ success: true });
+      return;
+    }
+
+    if (t === "OPENCODE_SET_DONE") {
+      await setOpencodeGroupState("done");
+      await sendToTab(msg.targetTabId ?? sender.tab?.id, { type: "SHOW_STATIC_INDICATOR", dismissed: false });
+      setTimeout(() => setOpencodeGroupState("idle"), 4000);
       sendResponse({ success: true });
       return;
     }
@@ -300,4 +339,4 @@ ensureOffscreen();
 chrome.runtime.onInstalled.addListener(() => console.log("[Opencode bg] installed 0.1.0"));
 chrome.runtime.onStartup.addListener(() => console.log("[Opencode bg] startup"));
 
-console.log("[Opencode bg] ready — group=Opencode purple, bridge=", OPENCODE_HTTP, OPENCODE_WS);
+console.log("[Opencode bg] ready — group=Opencode blue, bridge=", OPENCODE_HTTP, OPENCODE_WS);

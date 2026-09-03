@@ -19,16 +19,16 @@
 
 > ## ⚠️ Work in progress — it looks like Claude, it is not Claude yet
 >
-> The extension renders Claude's visible shell perfectly — purple tab group, glow border, phantom cursor, side panel with heartbeat. **The opencode bridge behind it is half-wired.**
+> The extension renders Claude's visible shell perfectly — blue jeans tab group, glow border, phantom cursor, side panel with heartbeat. **The opencode bridge behind it is half-wired.**
 >
 > What is measured:
 > ```
 > manifest valid          ✓  python3 -m json.tool passes
 > syntax check            ✓  node --check on bg + 2 content-scripts + sidepanel
 > load unpacked (Brave)   ✓  headless --load-extension, DevTools listening
-> tabGroups create/reuse  ✓  chrome.tabGroups.query → update → group → purple
+> tabGroups create/reuse  ✓  chrome.tabGroups.query → update → group → blue (jeans #4A7BA7)
 > broadcast SHOW/HIDE     ✓  tabs.query → sendMessage to all tabs
-> glow border injection   ✅ violet (fixed 0.2.0)
+> glow border injection   ✅ blue jeans #4A7BA7 (0.3.0)
 > phantom cursor          ✅ violet 0.2.0
 > sidepanel open (Ctrl+E) ✓  sidePanel.setPanelBehavior({openPanelOnActionClick:true})
 > HTTP ping to opencode   ✓  fetch http://localhost:4096 → 200 when opencode running
@@ -75,7 +75,7 @@ That finding is useful for any Chromium extension that wants visible agent state
 - how to prove Brave and Chrome share the extension engine (they do — `brave://extensions` is `chrome://extensions` with a skin);
 - how to reconstruct a full permission set without guessing (`manifest.json` lists 16 permissions + `<all_urls>` + 4 CSP connect targets);
 - how to tell a `document_start` accessibility shim from a `document_idle` visual layer — and why they are two different content-scripts;
-- how to find the tab-grouping primitive (`chrome.tabGroups` + `chrome.tabs.group`) that makes the purple `Opencode` pill in the tab strip;
+- how to find the tab-grouping primitive (`chrome.tabGroups` + `chrome.tabs.group`) that makes the blue `Opencode` pill in the tab strip;
 - how to steal a message protocol without stealing a backend (keep `SHOW_AGENT_INDICATORS` → `HIDE_FOR_TOOL_USE` → `SHOW_AFTER_TOOL_USE` → `STATIC_INDICATOR_HEARTBEAT`, swap `wss://bridge.claudeusercontent.com` for `ws://localhost:4096`);
 - which files are costume and which are load-bearing (`agent-visual-indicator.js` is the costume, `background.js` is the skeleton, `offscreen.js` is the life support);
 - which leftovers will ship your proprietary icon to the Chrome Web Store if you do not replace it (the 102 KB `icon-128.png` was Claude's — now regenerated as a 1.1 KB violet gradient).
@@ -92,15 +92,15 @@ If you are porting any "agent in Chrome" UX to your own backend, start from [Met
 | `manifest.json` valid | ✅ `python3 -m json.tool` passes |
 | JS syntax | ✅ `node --check` on 4 files |
 | Load unpacked (Brave 151.1.93.138) | ✅ headless `--load-extension` |
-| Tab group `Opencode` purple | ✅ `tabGroups.query` → `update` → `group` |
-| Glow border (inset box-shadow) | ✅ violet `rgba(124,58,237)` (fixed 0.2.0) |
-| Phantom cursor (SVG) | ✅ violet shadow `rgba(124,58,237)` (fixed 0.2.0) |
+| Tab group `Opencode` blue | ✅ `tabGroups.query` → `update` → `group` `blue`/`grey` |
+| Glow border (outer+inset) | ✅ blue jeans `rgba(74,123,167)` outer+inset (0.3.0) |
+| Phantom cursor (SVG) | ✅ blue jeans `rgba(74,123,167)` (0.3.0) |
 | Side panel (`Ctrl+E`) | ✅ `sidePanel` + `setPanelBehavior` |
 | Bridge HTTP ping | ✅ `fetch http://localhost:4096` |
 | Bridge WS | ❌ no WS endpoint on opencode at `/` |
 | Offscreen keepalive | ✅ `SW_KEEPALIVE` 20 s |
 | Accessibility tree | ✅ `__opencodeElementMap` on `<all_urls>` all_frames |
-| Icon rebrand | ✅ `icon-128.png` `O` 971B + `opencode-icon.svg` violet |
+| Icon rebrand | ✅ `icon-128.png` `O` 942B + `opencode-icon.svg` blue jeans #4A7BA7 |
 | `managed_schema.json` | ✅ `Opencode in Chrome` policy |
 | Tests | ❌ none |
 | Store package (`.crx` / `.zip`) | ❌ not built |
@@ -124,7 +124,7 @@ What it declares:
 |---|---|---|
 | `manifest_version` | 3 | 3 |
 | `name` | Claude | **Opencode in Chrome** |
-| `version` | 1.0.90 | **0.1.0** |
+| `version` | 1.0.90 | **0.3.0** |
 | `minimum_chrome_version` | 116 | 116 |
 | `permissions` | 16 entries | **identical 16** |
 | `host_permissions` | `<all_urls>` | `<all_urls>` |
@@ -167,7 +167,7 @@ OPENCODE_DISSOLVE_GROUP      → HIDE + ungroup (chrome.tabs.ungroup)
 OPENCODE_PING_OPENCODE       → fetch http://localhost:4096 → {success, url}
 ```
 
-Bulk primitives underneath: `chrome.tabs.group`, `chrome.tabGroups.update({title:"Opencode", color:"purple"})`, `chrome.tabs.ungroup`, `chrome.tabs.sendMessage`, `chrome.tabs.query({groupId})`.
+Bulk primitives underneath: `chrome.tabs.group`, `chrome.tabGroups.update({title:"Opencode (⏳/✓)", color:"blue"/"grey"})`, `chrome.tabs.ungroup`, `chrome.tabs.sendMessage`, `chrome.tabs.query({groupId})`.
 
 Each visual frame is not a screenshot — it is a DOM injection. The "phantom cursor" is an SVG with two `<path d="M0 0 L0 18 L4.5 14 L7.5 21.5 L11 20 L8 13 L14 13 Z">` layers (white stroke + `#111` fill, or the inverse for the styled variant), positioned `fixed` at `z-index: 2147483646`, moved via `transform: translate3d(x, y, 0)` with a 180 ms transition. The "glow" is not a border — it is `box-shadow: inset 0 0 15px …, inset 0 0 25px …, inset 0 0 35px …` on a `position: fixed; inset: 0; pointer-events: none; z-index: 2147483646` overlay, pulsing opacity `0.6 → 1` at 2 s. The "Stop Opencode" pill is a `position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 2147483647` button with `transition: all 0.3s cubic-bezier(0.4,0,0,0.2,1)`.
 
@@ -193,7 +193,7 @@ The other thing it does not fork is the backend. Claude's bridge is a managed `w
 
 1. **Content-scripts land on every page.** `accessibility-tree.js` at `document_start` `all_frames:true` builds `window.__opencodeElementMap` / `window.__generateOpencodeTree(filter,depth,refId)` — the same tree Claude uses to let the agent "see" the page. `opencode-visual-indicator.js` at `document_idle` installs the glow/cursor/pill listeners and is otherwise dormant until `SHOW_AGENT_INDICATORS` arrives.
 
-2. **Background owns tab groups.** `getOrCreateOpencodeGroup(tabIds)` does `chrome.tabGroups.query({title:"Opencode"})` — if a purple `Opencode` group already exists it reuses it (`chrome.tabs.group({tabIds, groupId})` + `chrome.tabGroups.update({color:"purple"})`), otherwise it creates one from the active tab. `removeOpencodeGroup()` does `chrome.tabs.query({groupId})` → `chrome.tabs.ungroup(tabIds)`. The purple is `chrome.tabGroups.Color` `purple`, not a CSS hex — the CSS hex `#7C3AED` is only for the in-page glow/cursor.
+2. **Background owns tab groups.** `getOrCreateOpencodeGroup(tabIds)` does `chrome.tabGroups.query({title:"Opencode"})` — if a blue `Opencode` group already exists it reuses it (`chrome.tabs.group({tabIds, groupId})` + `chrome.tabGroups.update({color:"blue"/"grey"})`), otherwise it creates one from the active tab. `removeOpencodeGroup()` does `chrome.tabs.query({groupId})` → `chrome.tabs.ungroup(tabIds)`. The pill color is `chrome.tabGroups.Color` `blue` (working/idle) / `grey` (done) — the CSS jeans blue `#4A7BA7` is only for the in-page glow/cursor outer+inset.
 
 3. **Sidepanel triggers the shell.** `sidepanel.html` has four buttons: `Crea gruppo Opencode` → `OPENCODE_CREATE_GROUP`, `Attiva glow su tab corrente` → `OPENCODE_ACTIVATE_GLOW`, `Muovi cursore demo` → `UPDATE_PHANTOM_CURSOR` in a `setInterval` (120 px ×, 40 px y, 400 ms, 4 s), `Stop` → `OPENCODE_DEACTIVATE_GLOW`. The `opencode` box tries to `fetch` then `iframe` `http://localhost:4096` — the `iframe` will be blocked by `X-Frame-Options` in many opencode configurations, in which case `Apri localhost:4096 in tab` is the fallback.
 
@@ -203,16 +203,16 @@ The other thing it does not fork is the backend. Claude's bridge is a managed `w
 
 ### The color that was not changed
 
-A rebrand is a `sed` until it is not. The commit that did `s/#D97757/#7C3AED/g` and `s/claude-/opencode-/g` missed the values that are *inside* `rgba()`:
+A rebrand is a `sed` until it is not. The commit that did `s/#D97757/#7C3AED/g` → `s/#7C3AED/#4A7BA7/g` and `s/claude-/opencode-/g` missed the values that are *inside* `rgba()`:
 
 | Token | Expected | Actual in `opencode-visual-indicator.js` |
 |---|---|---|
-| Phantom cursor `drop-shadow` | `rgba(124,58,237,0.9)` / `rgba(124,58,237,0.45)` | was `rgba(217,119,87,…)` — fixed 0.2.0 |
-| Glow `box-shadow` inner | `rgba(124,58,237,0.7/0.5/0.2)` | was `rgba(217,119,87,0.7/0.5/0.2)` — fixed 0.2.0 |
-| CSS variable `--purple` | `#7C3AED` | ✅ correct in `sidepanel.html` |
-| Tab group color | `purple` (`chrome.tabGroups.Color`) | ✅ correct in `background.js` |
+| Phantom cursor `drop-shadow` | `rgba(74,123,167,0.9)` / `rgba(74,123,167,0.45)` | was `rgba(217,119,87,…)` → `rgba(124,58,237)` — fixed 0.3.0 |
+| Glow `box-shadow` outer+inset | `rgba(74,123,167,0.85/0.45/0.35/0.15)` | was `rgba(217,119,87,0.7/0.5/0.2)` → `rgba(124,58,237)` — fixed 0.3.0 |
+| CSS variable `--blue-jeans` | `#4A7BA7` | ✅ correct in `sidepanel.html` |
+| Tab group color | `blue`/`grey` (`chrome.tabGroups.Color`) | ✅ `blue` (working/idle) `grey` (done) in `background.js` |
 
-You saw a purple tab group pill and a purple sidepanel, but the in-page glow and cursor shadow were warm orange until 0.2.0. On a white page (e.g. `example.com`) the difference was visible side-by-side with Claude. The fix was 12 `rgba(217,119,87) → rgba(124,58,237)` replacements — verified by grepping plus one manual `example.com` pixel check. Lesson: **a color rebrand is verified by sampling pixels, not by grepping hex.**
+You saw a blue jeans tab group pill and a blue jeans sidepanel, but the in-page glow and cursor shadow were warm orange until 0.2.0. On a white page (e.g. `example.com`) the difference was visible side-by-side with Claude. The fix was 12 `rgba(217,119,87) → rgba(124,58,237)` replacements — verified by grepping + pixel sample. In 0.3.0 glow switched from inset-only to outer+inset (0 0 0 2px 0.85 + 0 0 18px 0.45 + inset 15px 0.35 + inset 35px 0.15) to match dark pages. Lesson: **a color rebrand is verified by sampling pixels, not by grepping hex.**
 
 Other rebrand leftovers, same family:
 
@@ -278,7 +278,7 @@ If `chrome://extensions` shows `Manifest is invalid` → `python3 -m json.tool m
 
 ### Side panel
 
-- **Crea gruppo Opencode** — creates/reuses the purple `Opencode` tab group in the tab strip. The group is `chrome.tabGroups` + `chrome.tabs.group`, not a CSS illusion — you can drag tabs in/out of it.
+- **Crea gruppo Opencode** — creates/reuses the blue `Opencode` tab group in the tab strip. The group is `chrome.tabGroups` + `chrome.tabs.group` + `setOpencodeGroupState(working/done/idle) → `Opencode ⏳` blue / `Opencode ✓` grey / `Opencode` blue, not a CSS illusion — you can drag tabs in/out of it.
 - **Attiva glow su tab corrente** — `OPENCODE_ACTIVATE_GLOW` → `getOrCreateOpencodeGroup([activeTabId])` → `SHOW_AGENT_INDICATORS` on that tab. Look for the inset glow border + phantom cursor on the page. The tab must already be loaded (content-scripts run at `document_idle`).
 - **Muovi cursore demo** — fires `UPDATE_PHANTOM_CURSOR` 10 times at 400 ms. If you see nothing, the content-script did not receive `SHOW_AGENT_INDICATORS` first (the cursor is hidden until `c` flag is set in `opencode-visual-indicator.js:w()`).
 - **Stop** — `HIDE_AGENT_INDICATORS` everywhere. The tab group stays (use **Sciogli gruppo** to `ungroup`).
@@ -316,7 +316,7 @@ The extension does not start opencode for you. It only pings it.
 ## Known limitations
 
 - **The bridge is not a bridge.** WS to `localhost:4096` is dialled and immediately closed. Every glow today is sidepanel-initiated.
-- **Color ghosts fixed.** Glow + cursor now `rgba(124,58,237)` 0.2.0 — was orange.
+- **Color ghosts fixed.** Glow + cursor now `rgba(74,123,167)` blue jeans 0.3.0 — was orange → violet.
 - **Icon letter is wrong.** Regenerated PNG shows white `S` (Sisyphus) not `O` (Opencode). `assets/sisyphus-icon.svg` still ships under the old name.
 - **`managed_schema.json` renamed.** Now `Opencode in Chrome` titles; keys still Claude-derived — see above.
 - **CSP slimmed.** `connect-src` now only `localhost:4096`/`127.0.0.1:4096` — Claude/Segment/Sentry/Datadog entries removed 0.2.0.
@@ -330,9 +330,9 @@ The extension does not start opencode for you. It only pings it.
 
 Ordered by expected payoff per unit of effort:
 
-1. **Fix the two orange `rgba` leaks.** ✅ done 0.2.0 — `rgba(217,119,87) → rgba(124,58,237)` (12 occurrences).
+1. **Fix the two orange `rgba` leaks.** ✅ done 0.3.0 — `rgba(217,119,87) → rgba(124,58,237) → rgba(74,123,167)` (21 occurrences).
 
-2. **Finish icon + asset rename.** ✅ done 0.2.0 — `icon-128.png` `O` + `opencode-icon.svg`.
+2. **Finish icon + asset rename.** ✅ done 0.3.0 — `icon-128.png` `O` 942B `#4A7BA7` + `opencode-icon.svg` blue jeans.
 
 3. **Decide the real bridge.** Measure what opencode actually emits: HTTP API routes, TUI events, or plugin hooks. Options:
    - **Poll** `http://localhost:4096/events` or `/log` (if it exists) from `background.js` `chrome.alarms` (20 s) — cheap, laggy, but no opencode changes.
@@ -344,7 +344,7 @@ Ordered by expected payoff per unit of effort:
 
 5. **Managed schema rebrand or removal.** Either replace `managed_schema.json` with an opencode-relevant policy (e.g. `opencodeBridgeUrl`, `allowedBridgeOrigins`) or delete it for the store build — a non-force-installed extension ignores it anyway.
 
-6. **Tests + CI.** `web-ext lint`, `manifest` JSON schema validation, `node --check` in GHA, and a headless `brave --load-extension` smoke that asserts `chrome.tabGroups.query` returns the purple group after `OPENCODE_CREATE_GROUP`. Without this, every rebrand `sed` risks a silent orange leak again.
+6. **Tests + CI.** `web-ext lint`, `manifest` JSON schema validation, `node --check` in GHA, and a headless `brave --load-extension` smoke that asserts `chrome.tabGroups.query` returns the blue group after `OPENCODE_CREATE_GROUP`. Without this, every rebrand `sed` risks a silent orange leak again.
 
 ## Repository layout
 
@@ -418,7 +418,7 @@ This extension is a reverse-engineer of **Claude in Chrome** with `localhost:409
 
 **The engine being stolen**
 
-- [Claude in Chrome](https://claude.ai) (`fcoeoabgfenejglbffodgkkbkcdhcgfn` / `1.0.90_0` at `~/.config/BraveSoftware/.../Extensions/fcoeoabgfenejglbffodgkkbkcdhcgfn/1.0.90_0`) — the unpacked manifest is the datasheet: 16 permissions, `<all_urls>`, `document_start all_frames:true` vs `document_idle`, `tabGroups` purple pill, `offscreen` `AUDIO_PLAYBACK` keepalive every 20 s, and the 10-message `SHOW_AGENT_INDICATORS` protocol. No public repo, no docs — the extension itself is the doc.
+- [Claude in Chrome](https://claude.ai) (`fcoeoabgfenejglbffodgkkbkcdhcgfn` / `1.0.90_0` at `~/.config/BraveSoftware/.../Extensions/fcoeoabgfenejglbffodgkkbkcdhcgfn/1.0.90_0`) — the unpacked manifest is the datasheet: 16 permissions, `<all_urls>`, `document_start all_frames:true` vs `document_idle`, `tabGroups` blue pill (blue=working/idle, grey=done), `offscreen` `AUDIO_PLAYBACK` keepalive every 20 s, and the 10-message `SHOW_AGENT_INDICATORS` protocol. No public repo, no docs — the extension itself is the doc.
 
 **Clean-room rewrite that proved it can be done without Claude bytes**
 

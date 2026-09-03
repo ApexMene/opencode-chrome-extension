@@ -22,9 +22,9 @@
   </label>
   <label>Gruppo schede — titolo
     <input type="text" value="Opencode" disabled />
-    <small>Colore: purple (fisso, come Claude → Opencode viola)</small>
+    <small>Colore: blue (blu jeans #4A7BA7)</small>
   </label>
-  <p style="margin-top:20px; font-size:11px; color:#555;">Key rimosso dal manifest (dev mode). Rebrand glow #D97757 → #7C3AED.</p>
+  <p style="margin-top:20px; font-size:11px; color:#555;">Key rimosso dal manifest (dev mode). Rebrand glow #D97757 → #4A7BA7.</p>
   <script>
     const input = document.getElementById('opencode-url');
     chrome.storage?.sync?.get?.(['opencodeUrl'], (v) => { if (v?.opencodeUrl) input.value = v.opencodeUrl; });
