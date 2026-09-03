@@ -74,10 +74,15 @@
       (async()=>{
         const CARDS = ['ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-grid-video-renderer', 'ytd-compact-video-renderer'];
         const countFeed = ()=>CARDS.reduce((n,sel)=>n+document.querySelectorAll(sel).length, 0);
+        const countLinks = ()=>document.querySelectorAll('a#video-title').length;
         const waitFeed = ()=>new Promise(res=>{
-          if(countFeed()>=3) return res(true);
+          // YT home lazy-renders on scroll: scroll progressively to force feed growth
+          if(countLinks()>=5) return res(true);
           let n=0;
-          const iv=setInterval(()=>{ if(countFeed()>=3||++n>60){clearInterval(iv);res(countFeed()>=3);} },250);
+          const iv=setInterval(()=>{
+            try{ window.scrollBy(0, 900); }catch{}
+            if(countLinks()>=5||++n>60){clearInterval(iv);try{window.scrollTo(0,0);}catch{}res(countLinks()>=5);}
+          },400);
         });
         const fedOk = await waitFeed();
         const feedCount = countFeed();
@@ -107,9 +112,21 @@
           }
         });
         if(!best){
-          const fb = document.querySelector('a#video-title');
-          if(fb){ best = fb; bestViews = -2; bestTitle = fb.title||''; bestMode = 'first-fallback'; }
-          else { sendResponse({success:false,error:'no videos',feed:feedCount,fedOk,url:location.href}); return; }
+          // ultimate fallback: any video-title link page-wide (views may live in aria-labels the parser missed)
+          const links = [...document.querySelectorAll('a#video-title')].filter(a=>a.href && a.href.includes('/watch'));
+          if(links.length){
+            let fb = links[0], fbViews = -2;
+            for(const a of links){
+              const label = a.getAttribute('aria-label') || '';
+              const m2 = label.match(/([\d.,]+\s*(?:Mln|M|K|mila)?)\s*(?:di\s+)?visualizzazioni/i);
+              if(m2){ let v = parseViews(m2[1]); if(v > fbViews){ fbViews = v; fb = a; } }
+            }
+            best = fb; bestViews = fbViews; bestTitle = fb.title||''; bestMode = 'link-fallback';
+          }
+          else {
+            const sample = (document.querySelector('ytd-rich-grid-renderer')?.innerText || document.body.innerText || '').slice(0, 300);
+            sendResponse({success:false,error:'no videos',feed:feedCount,links:countLinks(),fedOk,url:location.href,sample}); return;
+          }
         }
         const rect=best.getBoundingClientRect();
         const cx=Math.round(rect.left+rect.width/2), cy=Math.round(rect.top+rect.height/2);
