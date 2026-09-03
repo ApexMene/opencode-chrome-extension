@@ -307,6 +307,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (t === "OPENCODE_BRIDGE_TICK") {
+      ensureSidecarWs();
       pollOpencodeBridge().catch(()=>{});
       sendResponse({ success: true, tick: true });
       return;
@@ -343,6 +344,127 @@ async function ensureGroupForTab(tabId) {
   return await getOrCreateOpencodeGroup([tabId]);
 }
 
+async function pickWorkTab() {
+  const groupable = (t) => t && t.url && /^https?:\/\//.test(t.url);
+  try {
+    const allTabs = await chrome.tabs.query({}).catch(()=>[]);
+    try {
+      const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(()=>[]);
+      if (active && groupable(active)) return active;
+    } catch {}
+    return allTabs.find((t) => groupable(t) && /youtube\.com/.test(t.url || "")) || allTabs.find(groupable) || null;
+  } catch { return null; }
+}
+
+async function onWorkingUI(tabId) {
+  await ensureGroupForTab(tabId);
+  await sendToTab(tabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>{});
+  const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
+  if (gid) await chrome.tabGroups.update(gid, { title: "Opencode ⏳", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
+}
+
+async function onDoneUI(tabId) {
+  const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
+  if (gid) await chrome.tabGroups.update(gid, { title: "Opencode ✓", color: "grey" }).catch(()=>{});
+  await broadcastToAllTabs({ type: "HIDE_AGENT_INDICATORS" }).catch(()=>{});
+  setTimeout(async ()=>{
+    const cur = await getCurrentGroupIdForTab(tabId).catch(()=>null);
+    if (cur) await chrome.tabGroups.update(cur, { title: "Opencode", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
+  }, 4000);
+}
+
+async function doClickAtPoint(tabId, cx, cy) {
+  await sendToTab(tabId, { type: "UPDATE_PHANTOM_CURSOR", x: cx, y: cy }).catch(()=>{});
+  await new Promise(r=>setTimeout(r, 500));
+  const rs = await chrome.scripting.executeScript({ target:{tabId}, func:(xx,yy)=>{
+    const el=document.elementFromPoint(xx,yy);
+    const v=el?.closest?.('video') || document.querySelector('video');
+    if(v){ v.pause(); if(!v.paused) v.click(); return 'paused '+v.paused; }
+    el?.click(); return el?.tagName;
+  }, args:[cx,cy]}).catch(()=>null);
+  return rs?.[0]?.result ?? "sent";
+}
+
+async function doTypeText(tabId, tt, submit) {
+  await chrome.scripting.executeScript({ target:{tabId}, func:()=>{
+    const el=document.querySelector('input[name="search_query"]')||document.querySelector('ytd-searchbox input')||document.querySelector('input#search');
+    if(el){ const r=el.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2)}; } return null;
+  }}).then(async rs=>{
+    const pos = rs?.[0]?.result;
+    if(pos) await sendToTab(tabId, {type:'UPDATE_PHANTOM_CURSOR', x: pos.x, y: pos.y}).catch(()=>{});
+  }).catch(()=>{});
+  await new Promise(r=>setTimeout(r, 500));
+  await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit}).catch(async()=>{
+    await chrome.scripting.executeScript({target:{tabId}, files:['content-scripts/opencode-input.js']}).catch(()=>{});
+    await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit}).catch(()=>{});
+  });
+  return "typed";
+}
+
+async function doTopVideo(tabId, workTab) {
+  let isHome = false;
+  try { const u = new URL(workTab.url); isHome = u.hostname.includes('youtube.com') && (u.pathname === '/' || u.pathname === ''); } catch {}
+  if (!isHome) {
+    const navKey = tabId + '>home';
+    if (globalThis._lastHomeNavKey !== navKey) {
+      globalThis._lastHomeNavKey = navKey;
+      await chrome.tabs.update(tabId, { url: 'https://www.youtube.com/' }).catch(()=>{});
+    }
+    return "navigating-home";
+  }
+  await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' }).catch(async()=>{
+    await chrome.scripting.executeScript({ target:{tabId}, files:['content-scripts/opencode-input.js'] }).catch(()=>{});
+    await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' }).catch(()=>{});
+  });
+  return "top-video-click-sent";
+}
+
+// WS sidecar (MCP server on 127.0.0.1:7421) — primary live channel, poll 6421 stays as fallback.
+const OPENCODE_WS_SIDECAR = "ws://127.0.0.1:7421";
+let _scWs = null, _scRetry = null;
+function ensureSidecarWs() {
+  if (_scWs && (_scWs.readyState === 0 || _scWs.readyState === 1)) return;
+  let ws;
+  try { ws = new WebSocket(OPENCODE_WS_SIDECAR); } catch { scheduleSidecarRetry(); return; }
+  _scWs = ws;
+  ws.onopen = () => { console.log("[Opencode bg] sidecar ws open"); try { ws.send(JSON.stringify({ role: "extension", type: "hello" })); } catch {} };
+  ws.onmessage = (ev) => { handleSidecarMsg(ev.data).catch(()=>{}); };
+  ws.onclose = () => { if (_scWs === ws) _scWs = null; scheduleSidecarRetry(); };
+  ws.onerror = () => { try { ws.close(); } catch {} };
+}
+function scheduleSidecarRetry() { if (_scRetry) return; _scRetry = setTimeout(() => { _scRetry = null; ensureSidecarWs(); }, 5000); }
+function sidecarAck(id, ok, result, error) {
+  try { _scWs?.send(JSON.stringify({ id, ok, result: String(result ?? "ok").slice(0, 2000), error: error ? String(error).slice(0, 500) : undefined })); } catch {}
+}
+async function handleSidecarMsg(raw) {
+  let m; try { m = JSON.parse(raw); } catch { return; }
+  if (m.event === "sync") { _opBridgeState = m.state === "working" ? "working" : "idle"; return; }
+  if (m.event === "working") {
+    const tab = await pickWorkTab(); if (!tab?.id) return;
+    await onWorkingUI(tab.id); _opBridgeState = "working"; return;
+  }
+  if (m.event === "done") {
+    const tab = await pickWorkTab(); if (!tab?.id) return;
+    await onDoneUI(tab.id); _opBridgeState = "idle"; return;
+  }
+  if (!m.cmd || !m.id) return;
+  const tab = await pickWorkTab(); const tabId = tab?.id;
+  if (!tabId) { sidecarAck(m.id, false, null, "no groupable tab"); return; }
+  try {
+    switch (m.cmd) {
+      case "navigate": await chrome.tabs.update(tabId, { url: m.url }).catch(()=>{}); return sidecarAck(m.id, true, "navigated");
+      case "glow": await onWorkingUI(tabId); return sidecarAck(m.id, true, "glow");
+      case "click": return sidecarAck(m.id, true, await doClickAtPoint(tabId, m.x, m.y));
+      case "type": await onWorkingUI(tabId); return sidecarAck(m.id, true, await doTypeText(tabId, m.text, m.submit !== false));
+      case "top_video": return sidecarAck(m.id, true, await doTopVideo(tabId, tab));
+      case "snapshot": {
+        const rs = await chrome.scripting.executeScript({ target:{tabId}, func:()=>({ title: document.title, url: location.href }) }).catch(()=>null);
+        return sidecarAck(m.id, true, JSON.stringify(rs?.[0]?.result ?? {}));
+      }
+      default: return sidecarAck(m.id, false, null, "unknown cmd " + m.cmd);
+    }
+  } catch (e) { sidecarAck(m.id, false, null, e?.message || String(e)); }
+}
 chrome.action?.onClicked?.addListener(async (tab) => {
   const tabId = tab?.id;
   if (!tabId) return;
@@ -372,70 +494,28 @@ async function pollOpencodeBridge() {
     const j = await r.json().catch(()=>null);
     if (!j) return;
     const st = j.status;
-    const allTabs = await chrome.tabs.query({}).catch(()=>[]);
-    const groupable = (t) => t && t.url && /^https?:\/\//.test(t.url);
-    let workTab = null;
-    try {
-      const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(()=>[]);
-      if (active && groupable(active)) workTab = active;
-    } catch {}
-    if (!workTab) workTab = allTabs.find((t) => groupable(t) && /youtube\.com/.test(t.url || "")) || allTabs.find(groupable) || null;
+    const workTab = await pickWorkTab();
     const tabId = workTab?.id;
     if (!tabId) return;
     if (st === "working") {
-      await ensureGroupForTab(tabId);
-      await sendToTab(tabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>{});
-      const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
-      if (gid) await chrome.tabGroups.update(gid, { title: "Opencode \u23F3", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
+      await onWorkingUI(tabId);
       const clickKey = j.click ? `${j.click.x},${j.click.y}` : null;
       if (clickKey && clickKey !== globalThis._lastClickKey) {
         globalThis._lastClickKey = clickKey;
-        const cx = j.click.x, cy = j.click.y;
-        await sendToTab(tabId, { type: "UPDATE_PHANTOM_CURSOR", x: cx, y: cy }).catch(()=>{});
-        await new Promise(r=>setTimeout(r, 500));
-        await chrome.scripting.executeScript({ target:{tabId}, func:(xx,yy)=>{
-          const el=document.elementFromPoint(xx,yy);
-          const v=el?.closest?.('video') || document.querySelector('video');
-          if(v){ v.pause(); if(!v.paused) v.click(); return 'paused '+v.paused; }
-          el?.click(); return el?.tagName;
-        }, args:[cx,cy]}).catch(()=>null);
+        await doClickAtPoint(tabId, j.click.x, j.click.y);
       }
       const typeKey = j.type_text ? (typeof j.type_text === 'string' ? j.type_text : JSON.stringify(j.type_text)) : null;
       if (typeKey && typeKey !== globalThis._lastTypeKey) {
         globalThis._lastTypeKey = typeKey;
         const tt = typeof j.type_text === 'string' ? j.type_text : j.type_text.text;
         const submit = typeof j.type_text === 'object' ? !!j.type_text.submit : true;
-        await chrome.scripting.executeScript({ target:{tabId}, func:()=>{
-          const el=document.querySelector('input[name="search_query"]')||document.querySelector('ytd-searchbox input')||document.querySelector('input#search');
-          if(el){ const r=el.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2)}; } return null;
-        }}).then(async rs=>{
-          const pos = rs?.[0]?.result;
-          if(pos) await sendToTab(tabId, {type:'UPDATE_PHANTOM_CURSOR', x: pos.x, y: pos.y}).catch(()=>{});
-        }).catch(()=>{});
-        await new Promise(r=>setTimeout(r, 500));
-        await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit}).catch(async()=>{
-          await chrome.scripting.executeScript({target:{tabId}, files:['content-scripts/opencode-input.js']}).catch(()=>{});
-          await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit}).catch(()=>{});
-        });
+        await doTypeText(tabId, tt, submit);
       }
       if (j.top_video) {
-        let isHome = false;
-        try { const u = new URL(workTab.url); isHome = u.hostname.includes('youtube.com') && (u.pathname === '/' || u.pathname === ''); } catch {}
-        if (!isHome) {
-          const navKey = tabId + '>home';
-          if (globalThis._lastHomeNavKey !== navKey) {
-            globalThis._lastHomeNavKey = navKey;
-            await chrome.tabs.update(tabId, { url: 'https://www.youtube.com/' }).catch(()=>{});
-          }
-        } else {
-          const topKey = tabId + '>topvideo';
-          if (globalThis._lastTopKey !== topKey) {
-            globalThis._lastTopKey = topKey;
-            await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' }).catch(async()=>{
-              await chrome.scripting.executeScript({ target:{tabId}, files:['content-scripts/opencode-input.js'] }).catch(()=>{});
-              await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' }).catch(()=>{});
-            });
-          }
+        const topKey = tabId + '>topvideo';
+        if (globalThis._lastTopKey !== topKey) {
+          globalThis._lastTopKey = topKey;
+          await doTopVideo(tabId, workTab);
         }
       }
       if (j.navigate) {
@@ -469,6 +549,7 @@ chrome.webNavigation?.onCompleted?.addListener(() => { pollOpencodeBridge().catc
 setTimeout(() => pollOpencodeBridge().catch(()=>{}), 1500);
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "opencode-heartbeat") {
+    ensureSidecarWs();
     await pollOpencodeBridge();
   }
 });
@@ -490,6 +571,8 @@ async function ensureOffscreen() {
   }
 }
 ensureOffscreen();
+ensureSidecarWs();
+setTimeout(() => ensureSidecarWs(), 4000);
 
 // Startup
 chrome.runtime.onInstalled.addListener(() => console.log("[Opencode bg] installed 0.1.0"));
