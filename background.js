@@ -352,11 +352,13 @@ async function pollOpencodeBridge() {
       await broadcastToAllTabs({ type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>{});
       await chrome.tabGroups.update(await getCurrentGroupIdForTab(tabId).catch(()=>null), { title: "Opencode \u23F3", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
     } else if (st === "idle" || st === "done") {
-      const title = st === "done" ? "Opencode \u2713" : "Opencode";
-      const color = st === "done" ? "grey" : OPENCODE_GROUP_COLOR;
       const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
-      if (gid) await chrome.tabGroups.update(gid, { title, color }).catch(()=>{});
-      if (st === "idle") await broadcastToAllTabs({ type: "HIDE_AGENT_INDICATORS" }).catch(()=>{});
+      if (gid) await chrome.tabGroups.update(gid, { title: "Opencode \u2713", color: "grey" }).catch(()=>{});
+      await broadcastToAllTabs({ type: "HIDE_AGENT_INDICATORS" }).catch(()=>{});
+      setTimeout(async ()=>{
+        const cur = await getCurrentGroupIdForTab(tabId).catch(()=>null);
+        if (cur) await chrome.tabGroups.update(cur, { title: "Opencode", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
+      }, 4000);
     }
   } finally { _opPolling = false; }
 }
