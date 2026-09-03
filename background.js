@@ -385,6 +385,26 @@ async function pollOpencodeBridge() {
           el?.click(); return el?.tagName;
         }, args:[cx,cy]}).catch(()=>null);
       }
+      if (j.type_text) {
+        const tt = typeof j.type_text === 'string' ? j.type_text : j.type_text.text;
+        const submit = typeof j.type_text === 'object' ? !!j.type_text.submit : true;
+        
+        await chrome.scripting.executeScript({ target:{tabId}, func:()=>{
+          const el=document.querySelector('input[name="search_query"]')||document.querySelector('ytd-searchbox input')||document.querySelector('input#search');
+          if(el){ const r=el.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2)}; } return null;
+        }}).then(async rs=>{
+          const pos = rs?.[0]?.result;
+          if(pos) await sendToTab(tabId, {type:'UPDATE_PHANTOM_CURSOR', x: pos.x, y: pos.y}).catch(()=>{});
+        }).catch(()=>{});
+        await new Promise(r=>setTimeout(r, 500));
+        await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit}).catch(async()=>{
+          await chrome.scripting.executeScript({target:{tabId}, files:['content-scripts/opencode-input.js']}).catch(()=>{});
+          await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit}).catch(()=>{});
+        });
+      }
+      if (j.navigate) {
+        await chrome.tabs.update(tabId, {url: j.navigate}).catch(()=>{});
+      }
       _opBridgeState = st;
       return;
     }

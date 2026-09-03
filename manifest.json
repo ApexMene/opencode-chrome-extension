@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Opencode in Chrome",
-  "description": "Opencode in Chrome \u2014 tab groups, glow, phantom cursor. Hard fork of Claude in Chrome.",
-  "version": "0.3.5",
+  "description": "Opencode in Chrome — tab groups, glow, phantom cursor. Hard fork of Claude in Chrome.",
+  "version": "0.3.6",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "assets/icon-16.png",
@@ -50,6 +50,16 @@
       ],
       "all_frames": false,
       "run_at": "document_idle"
+    },
+    {
+      "js": [
+        "content-scripts/opencode-input.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "all_frames": false,
+      "run_at": "document_idle"
     }
   ],
   "permissions": [
@@ -90,7 +100,8 @@
       "resources": [
         "content-scripts/accessibility-tree.js",
         "content-scripts/opencode-visual-indicator.js",
-        "assets/*"
+        "assets/*",
+        "content-scripts/opencode-input.js"
       ],
       "use_dynamic_url": false
     }
