@@ -460,7 +460,8 @@ async function handleSidecarMsg(raw) {
       case "navigate": await chrome.tabs.update(tabId, { url: m.url }).catch(()=>{}); return sidecarAck(m.id, true, "navigated");
       case "glow": await onWorkingUI(tabId); return sidecarAck(m.id, true, "glow");
       case "click": return sidecarAck(m.id, true, await doClickAtPoint(tabId, m.x, m.y));
-      case "type": await onWorkingUI(tabId); return sidecarAck(m.id, true, await doTypeText(tabId, m.text, m.submit !== false));
+      case "type":
+      case "type_text": await onWorkingUI(tabId); return sidecarAck(m.id, true, await doTypeText(tabId, m.text, m.submit !== false));
       case "top_video": return sidecarAck(m.id, true, await doTopVideo(tabId, tab));
       case "snapshot": {
         const rs = await chrome.scripting.executeScript({ target:{tabId}, func:()=>({ title: document.title, url: location.href }) }).catch(()=>null);
