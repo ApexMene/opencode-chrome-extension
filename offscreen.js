@@ -12,6 +12,11 @@ setInterval(() => {
   });
 }, 20_000);
 
+// fast bridge tick — chrome.alarms clamps to 30s min, offscreen setInterval does not
+setInterval(() => {
+  chrome.runtime.sendMessage({ type: "OPENCODE_BRIDGE_TICK" }).catch(() => {});
+}, 3000);
+
 // AudioContext is lazy — the doc is persistent for keepalive, so avoid
 // allocating audio resources until a sound actually needs to play.
 let audioContext;

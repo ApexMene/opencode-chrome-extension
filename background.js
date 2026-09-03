@@ -306,6 +306,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return;
     }
 
+    if (t === "OPENCODE_BRIDGE_TICK") {
+      pollOpencodeBridge().catch(()=>{});
+      sendResponse({ success: true, tick: true });
+      return;
+    }
+
     if (t === "SW_KEEPALIVE") {
       // from offscreen.js keepalive
       sendResponse({ success: true });
@@ -366,16 +372,25 @@ async function pollOpencodeBridge() {
     const j = await r.json().catch(()=>null);
     if (!j) return;
     const st = j.status;
-    const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(()=>[]);
-    const tabId = active?.id;
+    const allTabs = await chrome.tabs.query({}).catch(()=>[]);
+    const groupable = (t) => t && t.url && /^https?:\/\//.test(t.url);
+    let workTab = null;
+    try {
+      const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(()=>[]);
+      if (active && groupable(active)) workTab = active;
+    } catch {}
+    if (!workTab) workTab = allTabs.find((t) => groupable(t) && /youtube\.com/.test(t.url || "")) || allTabs.find(groupable) || null;
+    const tabId = workTab?.id;
     if (!tabId) return;
     if (st === "working") {
       await ensureGroupForTab(tabId);
       await sendToTab(tabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>{});
       const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
       if (gid) await chrome.tabGroups.update(gid, { title: "Opencode \u23F3", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
-      if (j.click && j.click.x != null) {
-        const cx=j.click.x, cy=j.click.y;
+      const clickKey = j.click ? `${j.click.x},${j.click.y}` : null;
+      if (clickKey && clickKey !== globalThis._lastClickKey) {
+        globalThis._lastClickKey = clickKey;
+        const cx = j.click.x, cy = j.click.y;
         await sendToTab(tabId, { type: "UPDATE_PHANTOM_CURSOR", x: cx, y: cy }).catch(()=>{});
         await new Promise(r=>setTimeout(r, 500));
         await chrome.scripting.executeScript({ target:{tabId}, func:(xx,yy)=>{
@@ -385,10 +400,11 @@ async function pollOpencodeBridge() {
           el?.click(); return el?.tagName;
         }, args:[cx,cy]}).catch(()=>null);
       }
-      if (j.type_text) {
+      const typeKey = j.type_text ? (typeof j.type_text === 'string' ? j.type_text : JSON.stringify(j.type_text)) : null;
+      if (typeKey && typeKey !== globalThis._lastTypeKey) {
+        globalThis._lastTypeKey = typeKey;
         const tt = typeof j.type_text === 'string' ? j.type_text : j.type_text.text;
         const submit = typeof j.type_text === 'object' ? !!j.type_text.submit : true;
-        
         await chrome.scripting.executeScript({ target:{tabId}, func:()=>{
           const el=document.querySelector('input[name="search_query"]')||document.querySelector('ytd-searchbox input')||document.querySelector('input#search');
           if(el){ const r=el.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2)}; } return null;
@@ -427,7 +443,10 @@ async function getCurrentGroupIdForTab(tabId){
   if(tab.groupId !== -1 && tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) return tab.groupId;
   return currentGroupId;
 }
-chrome.alarms.create("opencode-heartbeat", { periodInMinutes: 0.05 }); // 3s poll
+chrome.alarms.create("opencode-heartbeat", { periodInMinutes: 0.5 });
+chrome.tabs?.onActivated?.addListener(() => { pollOpencodeBridge().catch(()=>{}); });
+chrome.webNavigation?.onCompleted?.addListener(() => { pollOpencodeBridge().catch(()=>{}); }, { url: [{ schemes: ["http", "https"] }] });
+setTimeout(() => pollOpencodeBridge().catch(()=>{}), 1500);
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "opencode-heartbeat") {
     await pollOpencodeBridge();
