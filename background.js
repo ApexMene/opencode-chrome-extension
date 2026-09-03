@@ -97,19 +97,36 @@ async function broadcastToAllTabs(msg) {
 
 async function ensureContentScript(tabId) {
   try {
-    await chrome.scripting.executeScript({ target: { tabId }, files: ["content-scripts/opencode-visual-indicator.js"] }).catch(()=>{});
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["content-scripts/opencode-visual-indicator.js", "content-scripts/opencode-input.js"] }).catch(()=>{});
   } catch {}
 }
-async function sendToTab(tabId, msg) {
-  if (!tabId) return broadcastToAllTabs(msg);
-  try {
-    const r = await chrome.tabs.sendMessage(tabId, msg).catch(()=>null);
-    if (r) return r;
-    await ensureContentScript(tabId);
-    return await chrome.tabs.sendMessage(tabId, msg).catch(()=>null);
-  } catch (e) {
-    return null;
+async function waitForTabReady(tabId, timeoutMs = 15000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return false;
+    if (tab.status === "complete") {
+      const probe = await chrome.scripting.executeScript({ target: { tabId }, func: () => true }).catch(() => null);
+      if (probe) return true;
+    }
+    await new Promise((r) => setTimeout(r, 500));
   }
+  return false;
+}
+async function sendToTab(tabId, msg, retries = 3) {
+  if (!tabId) return broadcastToAllTabs(msg);
+  for (let i = 0; i < retries; i++) {
+    try {
+      const r = await chrome.tabs.sendMessage(tabId, msg).catch(() => null);
+      if (r && r.success !== false) return r;
+      await ensureContentScript(tabId);
+      await new Promise((r2) => setTimeout(r2, 800));
+      const r2 = await chrome.tabs.sendMessage(tabId, msg).catch(() => null);
+      if (r2 && r2.success !== false) return r2;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 800));
+  }
+  return null;
 }
 
 // ---- opencode bridge (http poll + ws) ----
@@ -358,9 +375,10 @@ async function pickWorkTab() {
 
 async function onWorkingUI(tabId) {
   await ensureGroupForTab(tabId);
-  await sendToTab(tabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>{});
+  const shown = await sendToTab(tabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>null);
   const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
   if (gid) await chrome.tabGroups.update(gid, { title: "Opencode ⏳", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
+  return !!shown;
 }
 
 async function onDoneUI(tabId) {
@@ -394,29 +412,25 @@ async function doTypeText(tabId, tt, submit) {
     if(pos) await sendToTab(tabId, {type:'UPDATE_PHANTOM_CURSOR', x: pos.x, y: pos.y}).catch(()=>{});
   }).catch(()=>{});
   await new Promise(r=>setTimeout(r, 500));
-  await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit}).catch(async()=>{
-    await chrome.scripting.executeScript({target:{tabId}, files:['content-scripts/opencode-input.js']}).catch(()=>{});
-    await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit}).catch(()=>{});
-  });
-  return "typed";
+  const tr = await sendToTab(tabId, {type:'OPENCODE_TYPE_TEXT', text: tt, submit});
+  if (tr && tr.success) return "typed";
+  return "type-failed:" + (tr?.error || "no-ack");
 }
 
 async function doTopVideo(tabId, workTab) {
+  let fresh = await chrome.tabs.get(tabId).catch(() => workTab);
+  const tabUrl = fresh?.url || workTab?.url || "";
   let isHome = false;
-  try { const u = new URL(workTab.url); isHome = u.hostname.includes('youtube.com') && (u.pathname === '/' || u.pathname === ''); } catch {}
+  try { const u = new URL(tabUrl); isHome = u.hostname.includes('youtube.com') && (u.pathname === '/' || u.pathname === ''); } catch {}
   if (!isHome) {
-    const navKey = tabId + '>home';
-    if (globalThis._lastHomeNavKey !== navKey) {
-      globalThis._lastHomeNavKey = navKey;
-      await chrome.tabs.update(tabId, { url: 'https://www.youtube.com/' }).catch(()=>{});
-    }
-    return "navigating-home";
+    await chrome.tabs.update(tabId, { url: 'https://www.youtube.com/' }).catch(()=>{});
+    const ready = await waitForTabReady(tabId);
+    if (!ready) return "navigating-home-timeout";
+    await onWorkingUI(tabId);
   }
-  await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' }).catch(async()=>{
-    await chrome.scripting.executeScript({ target:{tabId}, files:['content-scripts/opencode-input.js'] }).catch(()=>{});
-    await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' }).catch(()=>{});
-  });
-  return "top-video-click-sent";
+  const cr = await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' });
+  if (cr && cr.success) return "top-video-clicked:" + (cr.title || "") + " views=" + (cr.views ?? "?");
+  return "top-video-failed:" + (cr?.error || "no-ack");
 }
 
 // WS sidecar (MCP server on 127.0.0.1:7421) — primary live channel, poll 6421 stays as fallback.
@@ -457,12 +471,12 @@ async function handleSidecarMsg(raw) {
   if (!tabId) { sidecarAck(m.id, false, null, "no groupable tab"); return; }
   try {
     switch (m.cmd) {
-      case "navigate": await chrome.tabs.update(tabId, { url: m.url }).catch(()=>{}); return sidecarAck(m.id, true, "navigated");
+      case "navigate": await chrome.tabs.update(tabId, { url: m.url }).catch(()=>{}); await waitForTabReady(tabId); await onWorkingUI(tabId); return sidecarAck(m.id, true, "navigated");
       case "glow": await onWorkingUI(tabId); return sidecarAck(m.id, true, "glow");
-      case "click": return sidecarAck(m.id, true, await doClickAtPoint(tabId, m.x, m.y));
+      case "click": { const r = await doClickAtPoint(tabId, m.x, m.y); return sidecarAck(m.id, true, r); }
       case "type":
-      case "type_text": await onWorkingUI(tabId); return sidecarAck(m.id, true, await doTypeText(tabId, m.text, m.submit !== false));
-      case "top_video": return sidecarAck(m.id, true, await doTopVideo(tabId, tab));
+      case "type_text": { await onWorkingUI(tabId); const r = await doTypeText(tabId, m.text, m.submit !== false); const ok = !String(r).startsWith("type-failed"); return sidecarAck(m.id, ok, r, ok ? undefined : r); }
+      case "top_video": { const r = await doTopVideo(tabId, tab); const ok = String(r).startsWith("top-video-clicked"); return sidecarAck(m.id, ok, r, ok ? undefined : r); }
       case "snapshot": {
         const rs = await chrome.scripting.executeScript({ target:{tabId}, func:()=>({ title: document.title, url: location.href }) }).catch(()=>null);
         return sidecarAck(m.id, true, JSON.stringify(rs?.[0]?.result ?? {}));
