@@ -331,10 +331,45 @@ chrome.commands?.onCommand?.addListener(async (cmd) => {
 });
 
 // Alarms: periodic heartbeat to keep SW alive + poll opencode
-chrome.alarms.create("opencode-heartbeat", { periodInMinutes: 0.33 }); // ~20s
-chrome.alarms.onAlarm.addListener((alarm) => {
+const OPENCODE_BRIDGE = "http://127.0.0.1:6421/status";
+let _opBridgeState = "idle";
+let _opPolling = false;
+async function pollOpencodeBridge() {
+  if (_opPolling) return; _opPolling = true;
+  try {
+    const r = await fetch(OPENCODE_BRIDGE, { cache: "no-store" }).catch(()=>null);
+    if (!r || !r.ok) return;
+    const j = await r.json().catch(()=>null);
+    if (!j) return;
+    const st = j.status; // idle | working | done
+    if (st === _opBridgeState) return;
+    _opBridgeState = st;
+    const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(()=>[]);
+    const tabId = active?.id;
+    if (!tabId) return;
+    if (st === "working") {
+      await ensureGroupForTab(tabId);
+      await broadcastToAllTabs({ type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>{});
+      await chrome.tabGroups.update(await getCurrentGroupIdForTab(tabId).catch(()=>null), { title: "Opencode \u23F3", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
+    } else if (st === "idle" || st === "done") {
+      const title = st === "done" ? "Opencode \u2713" : "Opencode";
+      const color = st === "done" ? "grey" : OPENCODE_GROUP_COLOR;
+      const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
+      if (gid) await chrome.tabGroups.update(gid, { title, color }).catch(()=>{});
+      if (st === "idle") await broadcastToAllTabs({ type: "HIDE_AGENT_INDICATORS" }).catch(()=>{});
+    }
+  } finally { _opPolling = false; }
+}
+async function getCurrentGroupIdForTab(tabId){
+  const tab = await chrome.tabs.get(tabId).catch(()=>null);
+  if(!tab) return null;
+  if(tab.groupId !== -1 && tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) return tab.groupId;
+  return currentGroupId;
+}
+chrome.alarms.create("opencode-heartbeat", { periodInMinutes: 0.05 }); // 3s poll
+chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "opencode-heartbeat") {
-    console.log("[Opencode bg] heartbeat alarm");
+    await pollOpencodeBridge();
   }
 });
 

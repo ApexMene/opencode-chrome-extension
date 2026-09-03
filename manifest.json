@@ -74,7 +74,7 @@
     "<all_urls>"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:4096 ws://localhost:4096 http://127.0.0.1:4096 ws://127.0.0.1:4096; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:4096 ws://localhost:4096 http://127.0.0.1:4096 ws://127.0.0.1:4096 http://127.0.0.1:6421 http://localhost:6421; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
   },
   "externally_connectable": {
     "matches": [
