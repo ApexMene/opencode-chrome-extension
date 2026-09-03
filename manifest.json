@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Opencode in Chrome",
-  "description": "Opencode in Chrome — tab groups, glow, phantom cursor. Hard fork of Claude in Chrome.",
-  "version": "0.3.3",
+  "description": "Opencode in Chrome \u2014 tab groups, glow, phantom cursor. Hard fork of Claude in Chrome.",
+  "version": "0.3.4",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "assets/icon-16.png",

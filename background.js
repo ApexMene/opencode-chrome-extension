@@ -283,6 +283,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return;
     }
 
+    if (t === "OPENCODE_CLICK_VIDEO") {
+      const targetTabId = msg.targetTabId || (await chrome.tabs.query({ active: true, currentWindow: true }).then(a=>a[0]?.id));
+      if (targetTabId) {
+        const x = msg.x ?? 640, y = msg.y ?? 360;
+        await sendToTab(targetTabId, { type: "UPDATE_PHANTOM_CURSOR", x, y }).catch(()=>{});
+        await new Promise(r=>setTimeout(r, 500));
+        await chrome.scripting.executeScript({ target:{tabId:targetTabId}, func:(xx,yy)=>{
+          const el=document.elementFromPoint(xx,yy);
+          const v=el?.closest?.('video') || document.querySelector('video');
+          if(v){ v.pause(); v.click(); return 'video paused '+v.paused; }
+          el?.click(); return 'clicked '+el?.tagName;
+        }, args:[x,y]}).catch(()=>null);
+      }
+      sendResponse({ success: true });
+      return;
+    }
+
     if (t === "OPENCODE_PING_OPENCODE") {
       const ok = await pingOpencodeHttp();
       sendResponse({ success: ok, url: OPENCODE_HTTP });
