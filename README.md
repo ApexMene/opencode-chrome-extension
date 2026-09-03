@@ -63,7 +63,7 @@
 - [Methods that were tried and lost](#methods-that-were-tried-and-lost)
 - [Requirements](#requirements) · [Building](#building) · [Usage](#usage)
 - [Known limitations](#known-limitations)
-- [Roadmap](#roadmap) · [Contributing](#contributing)
+- [Roadmap](#roadmap) · [Claude parity](#claude-parity-06070) · [Contributing](#contributing)
 - [Repository layout](#repository-layout) · [Method notes](#method-notes)
 - [Security](#security) · [Credits & prior art](#credits--prior-art) · [Acknowledgements](#acknowledgements)
 
@@ -95,7 +95,7 @@ If you are porting any "agent in Chrome" UX to your own backend, start from [Met
 | | |
 |---|---|
 | Extension shell | ✅ renders |
-| `manifest.json` valid (0.3.5) | ✅ `python3 -m json.tool` passes |
+| `manifest.json` valid (0.7.0) | ✅ `python3 -m json.tool` passes |
 | JS syntax | ✅ `node --check` on 5 files |
 | Load unpacked (Brave) | ✅ `brave-browser --headless --load-extension` → `DevTools listening` |
 | Tab group `Opencode` blue | ✅ `tabGroups.query` → `update` → `group` `blue` |
@@ -109,6 +109,11 @@ If you are porting any "agent in Chrome" UX to your own backend, start from [Met
 | Bridge `ws://localhost:4096` | ❌ no WS endpoint — opencode is HTTP-only at `/` (use 6421/status) |
 | Bridge HTTP `localhost:4096` | ✅ `fetch http://localhost:4096` works but is not the control channel |
 | Click `click{x,y}` | ✅ `elementFromPoint(x,y)` → `video.pause()` + `el.click()` after 500 ms |
+| CDP computer `cdp_click/cdp_type/cdp_shot` (0.6.0) | ✅ `chrome.debugger` attach→op→detach: `Input.dispatchMouseEvent`, `insertText`, `Page.captureScreenshot` jpeg — the `debugger` perm finally earns its prompt |
+| MCP `opencode-browser` (0.5.0) | ✅ 13 tools over stdio → WS `127.0.0.1:7421` → SW: navigate/glow/click/type/top_video/snapshot/debug + cdp_click/cdp_type/cdp_shot + quick + approve |
+| `browser_quick` fast path (0.7.0) | ✅ compact ops `G on/off, N url, C x,y, T text, V, S` in one working/done cycle — Quick-mode analogue |
+| PermissionManager (0.7.0) | ✅ `ask`/`follow_a_plan`/`skip_all` + allowed/blocked site lists + sensitive-page gate (`bank/pay/checkout/login/health` needs `confirmed`) + `browser_approve_site` |
+| Sidepanel live session (0.7.0) | ✅ read-only WS viewer on 7421: live `working/done` state + history (max 50, `storage.local`) — bottoni demo kept below as manual fallback |
 | `ensureContentScript` (no F5) | ✅ `chrome.scripting.executeScript` fallback before `tabs.sendMessage` |
 | Offscreen keepalive | ✅ `SW_KEEPALIVE` 20 s (`AUDIO_PLAYBACK`) |
 | Accessibility tree | ✅ `__opencodeElementMap` on `<all_urls>` `all_frames:true` `document_start` |
@@ -414,12 +419,28 @@ The extension does not start opencode for you. It only polls what the plugin exp
 - **WS to `localhost:4096` does not exist.** `connectOpencodeWs()` dials `ws://localhost:4096`, opens then closes — opencode is HTTP-only at `/`. The live bridge is `127.0.0.1:6421/status` via the plugin. The WS code is a seam, not a channel.
 - **`managed_schema.json` is Claude-derived.** Titles now say `Opencode in Chrome`, but keys `thirdPartyDesktopMode`/`forceLoginOrgUUID`/`blockedUrlPatterns` remain — harmless, but not opencode-native.
 - **Iframe blocked.** `sidepanel.html` iframe to `http://localhost:4096` is often blocked by `X-Frame-Options`; the fallback is a new tab (`chrome.tabs.create`).
-- **Permissions are maximal.** `host_permissions: ["<all_urls>"]` + `debugger` + `declarativeNetRequestWithHostAccess` + `activeTab` + `scripting` + `offscreen` — inherited from Claude for fidelity, not minimised. The `debugger` permission shows a scary prompt and is currently unused except via `chrome.debugger` capability.
+- **Permissions are maximal but now enforced.** `host_permissions: ["<all_urls>"]` + `debugger` + `declarativeNetRequestWithHostAccess` — inherited from Claude. Difference from 0.5.x: `debugger` is now actually used (CDP computer tool), and `options.html` enforces `ask`/`follow_a_plan`/`skip_all` + blocked-list + sensitive-page gate. The `<all_urls>` default is still broader than it needs to be — allowlist narrowing is roadmap.
+- **Safety check is local, not a classifier.** Claude runs a separate model reviewing each action for hidden instructions; we run a regex (`bank|pay|checkout|login|health…`) + domain allowlist. Honest name: guardrail, not defense. Prompt-injection resistance: none beyond scoping.
 - **No tests, no CI.** `python3 -m json.tool` + `node --check` are the only automated checks. No `web-ext lint`, no Playwright for `chrome.tabGroups` behaviour, no store `zip` validation.
 - **`accessibility-tree.js` is minified-on-one-line.** Readable only after `prettier` / `js-beautify`. The `__generateOpencodeTree` alias is the only rebrand marker.
 - **No `identify` analogue.** Like the fingerprint driver has no `identify` (one-against-many), this extension has no "which tab is the agent on?" heuristic — `ensureGroupForTab` uses the active tab, or the caller must supply `targetTabId`.
 - **Icon is starburst, not the 2026 official square.** Official geometric square broke Chrome RGB decode (non-RGBA), reverted to proven 7.7K RGBA starburst. Functionally correct, not brand-final.
 - **Plugin `click{x,y}` is opt-in.** No opencode tool emits `click` today unless you wire it — the `OPENCODE_CLICK_VIDEO` path is tested, but no default tool populates `state.click`.
+
+## Claude parity (0.6.0–0.7.0)
+
+What *"se loro lo fanno anche noi lo facciamo"* produced, mapped to the gist (`sshh12`, v1.0.56):
+
+| Claude | This repo | Gap |
+|---|---|---|
+| `computer` via CDP (`Input.dispatchMouseEvent`, `insertText`, screenshot) | ✅ `cdp_click`/`cdp_type`/`cdp_shot` via `chrome.debugger` attach→op→detach + MCP tools `browser_cdp_click/type/shot` | no retina-downscale/`pxPerToken` budgeting, no `rrweb` recording |
+| `read_page` (`__generateAccessibilityTree` + WeakRef map) | ✅ inherited 1:1 (`__opencodeElementMap`) | same code, different prefix — no gap |
+| PermissionManager (`ask`/`follow_a_plan`/`skip_all`, domain categories) | ✅ `ask`/`follow_a_plan`/`skip_all` + allowed/blocked lists + sensitive-page gate | categories are user lists, not a classifier; safety check is regex, not a model |
+| Side panel = full session | ✅ live session viewer (read-only WS mirror of working/done + history) | viewer, not a full session — opencode still runs in terminal, not in the panel |
+| `tool_request`/`tool_response` to external brain | ✅ MCP stdio → WS 7421 → SW ack protocol (13 tools) | custom protocol, not `connectNative`; no `ping/pong`/`get_status`/`mcp_connected` verbs |
+| Quick mode (compact one-letter ops) | ✅ `browser_quick` (`G/N/C/T/V/S` in one cycle) | string-parsed, no effort gating |
+| Native messaging host (`com.anthropic…`) | ❌ not implemented | the architecturally correct next step — kills the 7421 sidecar process entirely |
+| Separate safety-check model vs prompt injection | ❌ regex guardrail only | honestly documented above |
 
 ## Roadmap
 
@@ -441,9 +462,11 @@ Ordered by expected payoff per unit of effort:
 
 | Path | Contents |
 |---|---|
-| `manifest.json` | MV3 manifest — the datasheet (permissions, CSP, content_scripts, side_panel, externally_connectable) `0.3.5` |
-| `background.js` | Service worker — tabGroups (create/reuse/dissolve + `setOpencodeGroupState` working/done/idle), message router (10 + 8 verbs), `ensureContentScript` fallback, `6421/status` poll via `chrome.alarms` `opencode-heartbeat` 3 s |
-| `sidepanel.html` / `sidepanel.js` | Side panel UI — group/glow/cursor-demo/⏳/✓/stop/ping, `iframe`/`tabs.create` fallback for opencode |
+| `manifest.json` | MV3 manifest — the datasheet (permissions, CSP, content_scripts, side_panel, externally_connectable) `0.7.0` |
+| `background.js` | Service worker — tabGroups (create/reuse/dissolve + `setOpencodeGroupState` working/done/idle), message router (10 + 8 verbs), `ensureContentScript` fallback, `6421/status` poll via `chrome.alarms` `opencode-heartbeat` 3 s, CDP computer (`cdpWith` attach→op→detach), PermissionManager (`permCheck` + sensitive gate), WS client to sidecar 7421 with ack protocol |
+| `sidepanel.html` / `sidepanel.js` | Side panel UI — live session viewer (WS 7421 state + history) on top, group/glow/cursor-demo/⏳/✓/stop/ping manual fallback below |
+| `options.html` | Options page — PermissionManager UI: `permMode` radio (`ask`/`follow_a_plan`/`skip_all`), allowed/blocked site textareas, safety-check checkbox |
+| `mcp-server/index.js` | MCP sidecar — stdio MCP (`initialize`/`tools/list`/`tools/call`, 13 tools, zero npm deps) + RFC6455 WS server on `127.0.0.1:7421` (hello/ack lifecycle, 20 s→120 s CMD timeout, multi-client broadcast) |
 | `offscreen.html` / `offscreen.js` | Offscreen doc — `SW_KEEPALIVE` every 20 s + lazy `AudioContext` for notification sounds (copied 1:1) |
 | `content-scripts/opencode-visual-indicator.js` | In-page chrome — glow overlay (outer+inset `rgba(74,123,167)`), phantom SVG cursor (`translate3d` 180 ms), Stop pill, static pill, heartbeat (18 KB) |
 | `content-scripts/accessibility-tree.js` | Accessibility shim — `__opencodeElementMap` / `__generateOpencodeTree` on `<all_urls>` `all_frames:true` `document_start` (7 KB) |
