@@ -92,7 +92,9 @@ function onClientMessage(sock, text) {
     pending.delete(m.id);
     clearTimeout(p.timer);
     p.resolve(m);
+    return;
   }
+  if (m.id) log(`late/unknown ack id=${m.id} ok=${m.ok} result=${String(m.result || "").slice(0, 120)}`);
 }
 const wsServer = net.createServer((sock) => {
   let hs = Buffer.alloc(0), upgraded = false, rest = Buffer.alloc(0);
@@ -147,6 +149,7 @@ const TOOLS = [
   { name: "browser_top_video", description: "On YouTube home: click the most-viewed video.", inputSchema: { type: "object", properties: {} } },
   { name: "browser_snapshot", description: "Bridge status: extension connected, current state, last tool result.", inputSchema: { type: "object", properties: {} } },
   { name: "browser_debug_tabs", description: "List tabs as seen by the extension service worker.", inputSchema: { type: "object", properties: {} } },
+  { name: "browser_debug_ping", description: "Ping the extension service worker through the sidecar (proves SW alive + WS path).", inputSchema: { type: "object", properties: {} } },
 ];
 
 async function runTool(name, args) {
@@ -158,6 +161,11 @@ async function runTool(name, args) {
     state = "working"; currentTool = name;
     try { const ack = await sendCmd({ cmd: "debug_tabs" }); return { ack: ack.ok, tabs: ack.ok ? JSON.parse(ack.result || "[]") : null, error: ack.error }; }
     finally { state = "idle"; currentTool = null; }
+  }
+  if (name === "browser_debug_ping") {
+    if (clients.size === 0) return { connected: false };
+    const ack = await sendCmd({ cmd: "debug_ping" });
+    return { ack: ack.ok, result: ack.ok ? ack.result : null, error: ack.error, late: !ack.ok ? "check sidecar log for late/unknown ack" : undefined };
   }
   const cmd = { cmd: name.replace("browser_", ""), ...args };
   if (name === "browser_navigate") { cmd.cmd = "navigate"; cmd.url = args.url; }

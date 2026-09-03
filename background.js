@@ -113,19 +113,32 @@ async function waitForTabReady(tabId, timeoutMs = 15000) {
   }
   return false;
 }
-async function sendToTab(tabId, msg, retries = 3) {
+function sendMsg1(tabId, msg, timeoutMs = 10000) {
+  return Promise.race([
+    chrome.tabs.sendMessage(tabId, msg).then(
+      (r) => ({ settled: true, r }),
+      (e) => ({ settled: true, err: String(e?.message || e) })
+    ),
+    new Promise((res) => setTimeout(() => res({ settled: false }), timeoutMs)),
+  ]);
+}
+async function sendToTab(tabId, msg, retries = 3, opts = {}) {
+  const reloadFallback = opts.reload !== false;
   if (!tabId) return broadcastToAllTabs(msg);
   for (let i = 0; i < retries; i++) {
     try {
-      const r = await chrome.tabs.sendMessage(tabId, msg).catch(() => null);
-      if (r && r.success !== false) return r;
+      const a = await sendMsg1(tabId, msg);
+      if (!a.settled) { console.log("[Opencode bg] sendToTab timeout attempt", i, msg.type); }
+      else if (a.err) { console.log("[Opencode bg] sendToTab send error attempt", i, a.err.slice(0, 120)); }
+      else { const r = a.r; if (r && r.success !== false) return r; }
       await ensureContentScript(tabId);
       await new Promise((r2) => setTimeout(r2, 800));
-      const r2 = await chrome.tabs.sendMessage(tabId, msg).catch(() => null);
-      if (r2 && r2.success !== false) return r2;
+      const b = await sendMsg1(tabId, msg);
+      if (b.settled && !b.err && b.r && b.r.success !== false) return b.r;
     } catch {}
     await new Promise((r) => setTimeout(r, 800));
   }
+  if (!reloadFallback) return { success: false, error: "no-ack-fast" };
   // last resort: stale content-script after extension upgrade -> reload tab via API, wait, inject, retry once
   try {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -135,9 +148,9 @@ async function sendToTab(tabId, msg, retries = 3) {
       if (ready) {
         await ensureContentScript(tabId);
         await new Promise((r) => setTimeout(r, 1500));
-        const r3 = await chrome.tabs.sendMessage(tabId, msg).catch(() => null);
-        if (r3 && r3.success !== false) return { ...r3, _reloaded: true };
-        return r3;
+        const r3 = await sendMsg1(tabId, msg, 15000);
+        if (r3.settled && !r3.err && r3.r && r3.r.success !== false) return { ...r3.r, _reloaded: true };
+        return (r3.settled && !r3.err) ? r3.r : null;
       }
     }
   } catch {}
@@ -448,7 +461,7 @@ async function doTopVideo(tabId, workTab) {
     await onWorkingUI(tabId);
   }
   tlog("sending CLICK_TOP_VIDEO");
-  const cr = await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' });
+  const cr = await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' }, 2, { reload: false });
   tlog("CLICK_TOP_VIDEO replied:", JSON.stringify(cr)?.slice(0, 300));
   if (cr && cr.success) return "top-video-clicked:" + (cr.title || "") + " views=" + (cr.views ?? "?") + " mode=" + (cr.mode || "?") + " feed=" + (cr.feed ?? "?");
   return "top-video-failed:" + (cr?.error || "no-ack") + " feed=" + (cr?.feed ?? "?") + " url=" + (cr?.url || "?");
@@ -499,6 +512,7 @@ async function handleSidecarMsg(raw) {
       case "type":
       case "type_text": { await onWorkingUI(tabId); const r = await doTypeText(tabId, m.text, m.submit !== false); const ok = !String(r).startsWith("type-failed"); return sidecarAck(m.id, ok, r, ok ? undefined : r); }
       case "top_video": { const r = await doTopVideo(tabId, tab); const ok = String(r).startsWith("top-video-clicked"); return sidecarAck(m.id, ok, r, ok ? undefined : r); }
+      case "debug_ping": return sidecarAck(m.id, true, "pong-sw");
       case "snapshot": {
         const rs = await chrome.scripting.executeScript({ target:{tabId}, func:()=>({ title: document.title, url: location.href }) }).catch(()=>null);
         return sidecarAck(m.id, true, JSON.stringify(rs?.[0]?.result ?? {}));
