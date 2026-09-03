@@ -60,7 +60,7 @@
 - [Known limitations](#known-limitations)
 - [Roadmap](#roadmap) · [Contributing](#contributing)
 - [Repository layout](#repository-layout) · [Method notes](#method-notes)
-- [Security](#security)
+- [Security](#security) · [Credits & prior art](#credits--prior-art)
 
 ---
 
@@ -412,8 +412,41 @@ If you have an opencode plugin or sidecar that can push `{type:"agent_start", ta
 
 The proprietary Claude binaries and assets used as a reference during reverse engineering are **not in this repository** and are not redistributable. The regenerated `assets/icon-128.png` is original.
 
-## Acknowledgements
+## Credits & prior art
 
-- The [Claude in Chrome](https://claude.ai) extension and its `fcoeoabgfenejglbffodgkkbkcdhcgfn` manifest, which provided exactly the right wrong starting point — a complete, working `tabGroups` + `phantom cursor` + `sidePanel` + `offscreen` reference with no docs.
-- [opencode](https://opencode.ai) for the local-first TUI/server that this extension wants to be worthy of.
-- The [Egis EH57E driver](https://github.com/ApexMene/egistec-eh57e-linux) README, which taught this README that a WIP document earns trust by reporting its orange ghosts, not by hiding them.
+This extension is a reverse-engineer of **Claude in Chrome** with `localhost:4096` repointed at opencode. It did not start from zero — it stands on work that already solved the hard parts in production. Cite before steal:
+
+**The engine being stolen**
+
+- [Claude in Chrome](https://claude.ai) (`fcoeoabgfenejglbffodgkkbkcdhcgfn` / `1.0.90_0` at `~/.config/BraveSoftware/.../Extensions/fcoeoabgfenejglbffodgkkbkcdhcgfn/1.0.90_0`) — the unpacked manifest is the datasheet: 16 permissions, `<all_urls>`, `document_start all_frames:true` vs `document_idle`, `tabGroups` purple pill, `offscreen` `AUDIO_PLAYBACK` keepalive every 20 s, and the 10-message `SHOW_AGENT_INDICATORS` protocol. No public repo, no docs — the extension itself is the doc.
+
+**Clean-room rewrite that proved it can be done without Claude bytes**
+
+- [noemica-io/open-claude-in-chrome](https://github.com/noemica-io/open-claude-in-chrome) (199★) — clean-room open-source Claude-in-Chrome (21 auto-approve tools, prompt-permission gate instead of a blocklist, no `bridge.claudeusercontent.com`). Ships the 6 prod bugs this repo would have re-discovered the hard way: MV3 service-worker death, retina `deviceScaleFactor` screenshot mismatch, shadow-DOM/iframe blindness, `storage.local` state amnesia on SW kill, Chrome profile wars, and the offscreen keepalive cadence. If you fork this repo's `background.js`, read their `service_worker` + `offscreen` lifecycle first.
+
+**The real opencode↔Chrome bridge (native host + HTTP)**
+
+- [pmgallardodev/opencode-chrome-bridge](https://github.com/pmgallardodev/opencode-chrome-bridge) (`v1.5.0`, 111 commits) — the only production bridge that actually wires opencode tools to a browser today. Architecture: Chrome extension + native messaging host (`com.opencode.chrome_bridge`) + local HTTP server with bearer token + 40+ tools (navigate, snapshot, click, fill, screenshot, network). This is the correct answer to this README's open question "decide the real bridge" — vanilla `ws://localhost:4096` does not exist, a native host + token-auth HTTP does. Future work here should converge on or fork that protocol rather than invent a third WS.
+
+**The minimal sidepanel that proved iframe is enough to start**
+
+- [alexisvedia/opencode-sidepanel](https://github.com/alexisvedia/opencode-sidepanel) — tiny extension that auto-starts `opencode web --port 4096` and shows it in `sidePanel` as an iframe. No `tabGroups`, no phantom cursor, no bridge — but it validates that `sidePanel` + `http://localhost:4096` renders without `externally_connectable` tricks and that `web` must be managed as a child process.
+
+**Phantom cursor craft**
+
+- [plaskas/phantom-cursor](https://github.com/plaskas/phantom-cursor) — dual cursor (system arrow + stylized eye) with `translate3d` + `cubic-bezier(0.2,0,0,1)` 180 ms. The SVG path `M0 0 L0 18 L4.5 14 L7.5 21.5 L11 20 L8 13 L14 13 Z` and the `z-index: 2147483646` / `2147483647` stacking in this repo are the same lineage; `drop-shadow` color was the leak that 0.2.0 fixed.
+
+**The polish reference (glow, stop pill, idle hide, token budget)**
+
+- [kabao0905/universal-browser-agent](https://github.com/kabao0905/universal-browser-agent) — universal agent with phantom dual-layer (white stroke + dark fill), inset `box-shadow` glow with `pulse` 2 s, `Stop` pill (`bottom:16px left:50% translateX(-50%)`), idle-hide chrome, and a token-budgeted `__generateAccessibilityTree`. The `HIDE_FOR_TOOL_USE` / `SHOW_AFTER_TOOL_USE` fidelity dance in this repo comes from that pattern.
+
+**The "agent IS the browser" extreme**
+
+- [BrowserOS](https://github.com/browseros-ai/BrowserOS) (13.5k★) — Chromium fork where the agent is not an extension at all. Useful as the counter-design: if `debugger` + `<all_urls>` + `offscreen` hacks feel too costly, the alternative is to not be an extension.
+
+**Local deps**
+
+- [opencode](https://opencode.ai) — the local-first TUI/server this extension wants to be worthy of.
+- [Egis EH57E driver](https://github.com/ApexMene/egistec-eh57e-linux) — the README that taught this README to report its orange ghosts instead of hiding them.
+
+If you use code or protocol ideas from any of the above, keep their `LICENSE` and attribution. This repo is MIT; their licenses remain theirs.
