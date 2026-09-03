@@ -309,6 +309,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // Sidepanel open on action click (mirror Claude)
 chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
 
+async function autoGroupTab(tabId, url) {
+  if (!tabId || tabId < 0) return;
+  if (url && (url.startsWith("chrome://") || url.startsWith("brave://") || url.startsWith("chrome-extension://"))) return;
+  try {
+    await getOrCreateOpencodeGroup([tabId]);
+    await setOpencodeGroupState("working");
+    await sendToTab(tabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId });
+    console.log("[Opencode bg] auto-grouped tab", tabId, url?.slice(0,60));
+  } catch (e) { console.warn("[Opencode bg] auto-group failed", e); }
+}
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete" && tab.url && tab.url.includes("youtube.com/watch")) autoGroupTab(tabId, tab.url);
+});
+chrome.tabs.onCreated.addListener((tab) => {
+  if (currentGroupId != null && tab.id) setTimeout(() => autoGroupTab(tab.id, tab.pendingUrl || tab.url), 800);
+});
+
 // Alarms: periodic heartbeat to keep SW alive + poll opencode
 chrome.alarms.create("opencode-heartbeat", { periodInMinutes: 0.33 }); // ~20s
 chrome.alarms.onAlarm.addListener((alarm) => {
