@@ -83,6 +83,7 @@ function onClientMessage(sock, text) {
   try { m = JSON.parse(text); } catch { return; }
   if (m.role === "extension" && m.type === "hello") {
     sock.isExtension = true;
+    log(`ext hello (total ext clients: ${[...clients].filter((c) => c.isExtension).length})`);
     wsSend(sock, JSON.stringify({ event: "sync", state, tool: currentTool, result: lastResult }));
     return;
   }
@@ -115,6 +116,7 @@ const wsServer = net.createServer((sock) => {
     rest = wsHandleFrame(sock, Buffer.concat([rest, chunk]));
   });
   const drop = () => {
+    if (sock.isExtension) log(`ext disconnect (remaining ext: ${[...clients].filter((c) => c.isExtension && c !== sock).length})`);
     clients.delete(sock);
     try { sock.destroy(); } catch {}
   };

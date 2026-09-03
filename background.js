@@ -433,17 +433,23 @@ async function doTypeText(tabId, tt, submit) {
 }
 
 async function doTopVideo(tabId, workTab) {
+  const tlog = (...a) => console.log("[Opencode top]", ...a);
   let fresh = await chrome.tabs.get(tabId).catch(() => workTab);
   const tabUrl = fresh?.url || workTab?.url || "";
+  tlog("start", tabId, tabUrl.slice(0, 60));
   let isHome = false;
   try { const u = new URL(tabUrl); isHome = u.hostname.includes('youtube.com') && (u.pathname === '/' || u.pathname === ''); } catch {}
   if (!isHome) {
+    tlog("navigating home");
     await chrome.tabs.update(tabId, { url: 'https://www.youtube.com/' }).catch(()=>{});
     const ready = await waitForTabReady(tabId);
+    tlog("home ready:", ready);
     if (!ready) return "navigating-home-timeout";
     await onWorkingUI(tabId);
   }
+  tlog("sending CLICK_TOP_VIDEO");
   const cr = await sendToTab(tabId, { type: 'OPENCODE_CLICK_TOP_VIDEO' });
+  tlog("CLICK_TOP_VIDEO replied:", JSON.stringify(cr)?.slice(0, 300));
   if (cr && cr.success) return "top-video-clicked:" + (cr.title || "") + " views=" + (cr.views ?? "?") + " mode=" + (cr.mode || "?") + " feed=" + (cr.feed ?? "?");
   return "top-video-failed:" + (cr?.error || "no-ack") + " feed=" + (cr?.feed ?? "?") + " url=" + (cr?.url || "?");
 }
@@ -482,6 +488,7 @@ async function handleSidecarMsg(raw) {
     const brief = all.map((t) => ({ id: t.id, url: (t.url || "").slice(0, 80), active: !!t.active, groupId: t.groupId }));
     return sidecarAck(m.id, true, JSON.stringify(brief));
   }
+  if (m.cmd === "debug_ping") return sidecarAck(m.id, true, "pong");
   const tab = await pickWorkTab(); const tabId = tab?.id;
   if (!tabId) { sidecarAck(m.id, false, null, "no groupable tab"); return; }
   try {
