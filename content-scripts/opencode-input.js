@@ -7,17 +7,28 @@
         || document.querySelector('input[type="text"]');
   }
   function dispatchInput(el, text){
-    el.focus();
-    try{ el.setSelectionRange(0, el.value.length); }catch{ try{ el.select?.(); }catch{} }
-    try{ document.execCommand('insertText', false, text); }catch{}
-
-    if(el.value !== text){
-      const proto = el.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
-      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-      desc?.set?.call(el, text);
+    try{ el.focus(); }catch{}
+    const isField = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+    if(isField){
+      try{ el.setSelectionRange(0, (el.value || '').length); }catch{ try{ el.select(); }catch{} }
+      let done = false;
+      try{ done = document.execCommand('insertText', false, text); }catch{}
+      if(!done || el.value !== text){
+        try{
+          const proto = el.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+          const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+          if(desc && typeof desc.set === 'function' && el instanceof (el.tagName === 'INPUT' ? HTMLInputElement : HTMLTextAreaElement)){
+            desc.set.call(el, text);
+          } else {
+            el.value = text;
+          }
+        }catch{ try{ el.value = text; }catch{} }
+      }
+    } else {
+      try{ el.textContent = text; }catch{}
     }
-    el.dispatchEvent(new Event('input', {bubbles:true}));
-    el.dispatchEvent(new Event('change', {bubbles:true}));
+    try{ el.dispatchEvent(new Event('input', {bubbles:true})); }catch{}
+    try{ el.dispatchEvent(new Event('change', {bubbles:true})); }catch{}
   }
   function sendToTabCursor(x,y){
     try{ return chrome.runtime.sendMessage({type:'UPDATE_PHANTOM_CURSOR', x, y}).catch(()=>{}); }catch{ return Promise.resolve(); }
