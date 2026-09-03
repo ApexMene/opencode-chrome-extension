@@ -127,19 +127,23 @@ async function sendToTab(tabId, msg, retries = 3, opts = {}) {
   const reloadFallback = opts.reload !== false;
   const slowMs = SLOW_MSGS[msg.type] || 10000;
   if (!tabId) return broadcastToAllTabs(msg);
+  let lastReply = null;
   for (let i = 0; i < retries; i++) {
     try {
       const a = await sendMsg1(tabId, msg, slowMs);
       if (!a.settled) { console.log("[Opencode bg] sendToTab timeout attempt", i, msg.type); }
       else if (a.err) { console.log("[Opencode bg] sendToTab send error attempt", i, a.err.slice(0, 120)); }
-      else { const r = a.r; if (r && r.success !== false) return r; }
+      else if (a.r && a.r.success !== false) return a.r;
+      else if (a.r) lastReply = a.r;
       await ensureContentScript(tabId);
       await new Promise((r2) => setTimeout(r2, 800));
       const b = await sendMsg1(tabId, msg, slowMs);
       if (b.settled && !b.err && b.r && b.r.success !== false) return b.r;
+      else if (b.settled && !b.err && b.r) lastReply = b.r;
     } catch {}
     await new Promise((r) => setTimeout(r, 800));
   }
+  if (lastReply) return lastReply;
   if (!reloadFallback) return { success: false, error: "no-ack-fast" };
   // last resort: stale content-script after extension upgrade -> reload tab via API, wait, inject, retry once
   try {
@@ -452,8 +456,11 @@ async function doTopVideo(tabId, workTab) {
   let fresh = await chrome.tabs.get(tabId).catch(() => workTab);
   const tabUrl = fresh?.url || workTab?.url || "";
   tlog("start", tabId, tabUrl.slice(0, 60));
+  let host = "";
+  try { host = new URL(tabUrl).hostname; } catch {}
+  if (!/youtube\.com$/.test(host)) return "not-on-youtube:" + (host || "?") + " refusing to hijack tab";
   let isHome = false;
-  try { const u = new URL(tabUrl); isHome = u.hostname.includes('youtube.com') && (u.pathname === '/' || u.pathname === ''); } catch {}
+  try { const u = new URL(tabUrl); isHome = (u.pathname === '/' || u.pathname === ''); } catch {}
   if (!isHome) {
     tlog("navigating home");
     await chrome.tabs.update(tabId, { url: 'https://www.youtube.com/' }).catch(()=>{});

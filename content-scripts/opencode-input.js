@@ -76,6 +76,10 @@
       __ocTopBusy = true;
       (async()=>{
         try{
+        try{
+          const consentBtn = [...document.querySelectorAll('button')].find(b=>/accetta tutto|accept all|accetto/i.test(b.textContent||''));
+          if(consentBtn){ consentBtn.click(); await new Promise(r=>setTimeout(r,1200)); }
+        }catch{}
         const CARDS = ['ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-grid-video-renderer', 'ytd-compact-video-renderer'];
         const countFeed = ()=>CARDS.reduce((n,sel)=>n+document.querySelectorAll(sel).length, 0);
         const countLinks = ()=>document.querySelectorAll('a#video-title').length;
