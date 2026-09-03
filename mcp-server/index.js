@@ -144,11 +144,18 @@ const TOOLS = [
   { name: "browser_glow", description: "Turn the agent glow + phantom cursor overlay on or off.", inputSchema: { type: "object", properties: { on: { type: "boolean" } }, required: ["on"] } },
   { name: "browser_top_video", description: "On YouTube home: click the most-viewed video.", inputSchema: { type: "object", properties: {} } },
   { name: "browser_snapshot", description: "Bridge status: extension connected, current state, last tool result.", inputSchema: { type: "object", properties: {} } },
+  { name: "browser_debug_tabs", description: "List tabs as seen by the extension service worker.", inputSchema: { type: "object", properties: {} } },
 ];
 
 async function runTool(name, args) {
   if (name === "browser_snapshot") {
     return { connected: clients.size > 0, clients: clients.size, state, tool: currentTool, lastResult };
+  }
+  if (name === "browser_debug_tabs") {
+    if (clients.size === 0) return { connected: false };
+    state = "working"; currentTool = name;
+    try { const ack = await sendCmd({ cmd: "debug_tabs" }); return { ack: ack.ok, tabs: ack.ok ? JSON.parse(ack.result || "[]") : null, error: ack.error }; }
+    finally { state = "idle"; currentTool = null; }
   }
   const cmd = { cmd: name.replace("browser_", ""), ...args };
   if (name === "browser_navigate") { cmd.cmd = "navigate"; cmd.url = args.url; }

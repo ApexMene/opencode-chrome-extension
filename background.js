@@ -461,7 +461,14 @@ async function handleSidecarMsg(raw) {
         const rs = await chrome.scripting.executeScript({ target:{tabId}, func:()=>({ title: document.title, url: location.href }) }).catch(()=>null);
         return sidecarAck(m.id, true, JSON.stringify(rs?.[0]?.result ?? {}));
       }
-      default: return sidecarAck(m.id, false, null, "unknown cmd " + m.cmd);
+      default: {
+        if (m.cmd === "debug_tabs") {
+          const all = await chrome.tabs.query({});
+          const brief = all.map((t) => ({ id: t.id, url: (t.url || "").slice(0, 80), active: !!t.active, groupId: t.groupId }));
+          return sidecarAck(m.id, true, JSON.stringify(brief));
+        }
+        return sidecarAck(m.id, false, null, "unknown cmd " + m.cmd);
+      }
     }
   } catch (e) { sidecarAck(m.id, false, null, e?.message || String(e)); }
 }
