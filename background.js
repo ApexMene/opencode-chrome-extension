@@ -126,6 +126,21 @@ async function sendToTab(tabId, msg, retries = 3) {
     } catch {}
     await new Promise((r) => setTimeout(r, 800));
   }
+  // last resort: stale content-script after extension upgrade -> reload tab via API, wait, inject, retry once
+  try {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (tab && /^https?:\/\//.test(tab.url || "")) {
+      await chrome.tabs.reload(tabId).catch(() => {});
+      const ready = await waitForTabReady(tabId, 20000);
+      if (ready) {
+        await ensureContentScript(tabId);
+        await new Promise((r) => setTimeout(r, 1500));
+        const r3 = await chrome.tabs.sendMessage(tabId, msg).catch(() => null);
+        if (r3 && r3.success !== false) return { ...r3, _reloaded: true };
+        return r3;
+      }
+    }
+  } catch {}
   return null;
 }
 
