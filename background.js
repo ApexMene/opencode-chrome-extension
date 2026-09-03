@@ -95,12 +95,19 @@ async function broadcastToAllTabs(msg) {
   return results;
 }
 
+async function ensureContentScript(tabId) {
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["content-scripts/opencode-visual-indicator.js"] }).catch(()=>{});
+  } catch {}
+}
 async function sendToTab(tabId, msg) {
   if (!tabId) return broadcastToAllTabs(msg);
   try {
-    return await chrome.tabs.sendMessage(tabId, msg);
+    const r = await chrome.tabs.sendMessage(tabId, msg).catch(()=>null);
+    if (r) return r;
+    await ensureContentScript(tabId);
+    return await chrome.tabs.sendMessage(tabId, msg).catch(()=>null);
   } catch (e) {
-    console.warn("[Opencode bg] sendMessage to tab failed", tabId, e);
     return null;
   }
 }
@@ -341,17 +348,21 @@ async function pollOpencodeBridge() {
     if (!r || !r.ok) return;
     const j = await r.json().catch(()=>null);
     if (!j) return;
-    const st = j.status; // idle | working | done
-    if (st === _opBridgeState) return;
-    _opBridgeState = st;
+    const st = j.status;
     const [active] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(()=>[]);
     const tabId = active?.id;
     if (!tabId) return;
     if (st === "working") {
       await ensureGroupForTab(tabId);
-      await broadcastToAllTabs({ type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>{});
-      await chrome.tabGroups.update(await getCurrentGroupIdForTab(tabId).catch(()=>null), { title: "Opencode \u23F3", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
-    } else if (st === "idle" || st === "done") {
+      await sendToTab(tabId, { type: "SHOW_AGENT_INDICATORS", ownerTabId: tabId }).catch(()=>{});
+      const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
+      if (gid) await chrome.tabGroups.update(gid, { title: "Opencode \u23F3", color: OPENCODE_GROUP_COLOR }).catch(()=>{});
+      _opBridgeState = st;
+      return;
+    }
+    if (st === _opBridgeState) return;
+    _opBridgeState = st;
+    if (st === "idle" || st === "done") {
       const gid = await getCurrentGroupIdForTab(tabId).catch(()=>null);
       if (gid) await chrome.tabGroups.update(gid, { title: "Opencode \u2713", color: "grey" }).catch(()=>{});
       await broadcastToAllTabs({ type: "HIDE_AGENT_INDICATORS" }).catch(()=>{});
