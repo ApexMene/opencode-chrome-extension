@@ -448,6 +448,11 @@ async function handleSidecarMsg(raw) {
     await onDoneUI(tab.id); _opBridgeState = "idle"; return;
   }
   if (!m.cmd || !m.id) return;
+  if (m.cmd === "debug_tabs") {
+    const all = await chrome.tabs.query({});
+    const brief = all.map((t) => ({ id: t.id, url: (t.url || "").slice(0, 80), active: !!t.active, groupId: t.groupId }));
+    return sidecarAck(m.id, true, JSON.stringify(brief));
+  }
   const tab = await pickWorkTab(); const tabId = tab?.id;
   if (!tabId) { sidecarAck(m.id, false, null, "no groupable tab"); return; }
   try {
@@ -461,14 +466,7 @@ async function handleSidecarMsg(raw) {
         const rs = await chrome.scripting.executeScript({ target:{tabId}, func:()=>({ title: document.title, url: location.href }) }).catch(()=>null);
         return sidecarAck(m.id, true, JSON.stringify(rs?.[0]?.result ?? {}));
       }
-      default: {
-        if (m.cmd === "debug_tabs") {
-          const all = await chrome.tabs.query({});
-          const brief = all.map((t) => ({ id: t.id, url: (t.url || "").slice(0, 80), active: !!t.active, groupId: t.groupId }));
-          return sidecarAck(m.id, true, JSON.stringify(brief));
-        }
-        return sidecarAck(m.id, false, null, "unknown cmd " + m.cmd);
-      }
+      default: return sidecarAck(m.id, false, null, "unknown cmd " + m.cmd);
     }
   } catch (e) { sidecarAck(m.id, false, null, e?.message || String(e)); }
 }
