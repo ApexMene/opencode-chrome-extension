@@ -1,0 +1,98 @@
+{
+  "manifest_version": 3,
+  "name": "Opencode in Chrome",
+  "description": "Opencode in Chrome — tab groups, glow, phantom cursor. Hard fork of Claude in Chrome.",
+  "version": "0.2.0",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "128": "assets/icon-128.png"
+  },
+  "action": {
+    "default_title": "Open Opencode"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "options_page": "options.html",
+  "commands": {
+    "toggle-side-panel": {
+      "description": "Toggle Opencode side panel",
+      "suggested_key": {
+        "default": "Ctrl+E",
+        "mac": "Command+E"
+      }
+    }
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "content-scripts/accessibility-tree.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "all_frames": true,
+      "run_at": "document_start"
+    },
+    {
+      "js": [
+        "content-scripts/opencode-visual-indicator.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "all_frames": false,
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "activeTab",
+    "scripting",
+    "debugger",
+    "tabGroups",
+    "tabs",
+    "alarms",
+    "notifications",
+    "webNavigation",
+    "declarativeNetRequestWithHostAccess",
+    "offscreen",
+    "nativeMessaging",
+    "unlimitedStorage",
+    "downloads",
+    "identity"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:4096 ws://localhost:4096 http://127.0.0.1:4096 ws://127.0.0.1:4096; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+  },
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:4096/*",
+      "http://127.0.0.1:4096/*"
+    ]
+  },
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "content-scripts/accessibility-tree.js",
+        "content-scripts/opencode-visual-indicator.js",
+        "assets/*"
+      ],
+      "use_dynamic_url": false
+    }
+  ],
+  "storage": {
+    "managed_schema": "managed_schema.json"
+  }
+}

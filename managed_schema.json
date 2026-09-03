@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "blockedUrlPatterns": {
+      "title": "Blocked URL patterns",
+      "description": "URL patterns where Opencode in Chrome is blocked. Each pattern is matched against the page's hostname and path (e.g. 'example.com/admin'). Use '*' as a wildcard to match any sequence of characters. Patterns are case-insensitive; a leading 'http://', 'https://', or 'www.' is ignored. A bare domain with no path is treated as '<domain>/*'. Example: 'github.com/myorg/*' blocks all pages under that path.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "thirdPartyDesktopMode": {
+      "title": "Claude Desktop third-party mode",
+      "description": "Optional pin. Without it, the extension is managed by Claude Desktop only while it is paired, over the local connection, with a Claude Desktop that Anthropic attests belongs to an organization using Claude through its own model provider (a third-party deployment on Anthropic's control plane); that Desktop must be signed in to the same account and organization as the extension, and the extension returns to normal when the pairing ends. Set this to true to force the managed state on regardless of any pairing, or to false to keep it off: such a Claude Desktop then pairs like any other (same account only) and does not manage the extension. While managed, page data and telemetry stay local: the extension does not connect to Anthropic's hosted browser bridge (Claude Desktop drives it over the local connection), does not send error reports, performance telemetry, or usage analytics, does not fetch feature configuration from Anthropic, and makes no Anthropic API calls beyond identifying the signed-in user and the hosted URL-safety check, which sends the URL of each page the agent navigates to (path and query included, fragment removed) to Anthropic to look up its safety category; its own chat and tools are unavailable. Once Claude Desktop, signed in to the same account and organization, has paired with it over that connection, per-site permission decisions and prompts are delegated to Desktop (safety-critical confirmations stay in the browser). When set to true, requires 'forceLoginOrgUUID' set to exactly one organization UUID (Desktop control is refused otherwise). Users still sign in to claude.ai (the extension's identity; such an organization grants it only the profile scope, and a copy with this value set to true asks for nothing more), and URL restrictions ('blockedUrlPatterns' and that hosted check) are otherwise unchanged. Honored only on a copy that is force-installed by policy (ExtensionInstallForcelist, or ExtensionSettings with installation_mode 'force_installed'); user-installed, 'normal_installed', and sideloaded copies ignore it and can be managed only by a paired Claude Desktop as above; on a force-installed copy it is honored from any policy source Chrome applies, machine or user scope. With feature configuration off, Anthropic's remote settings (including minimum-supported-version enforcement) do not reach these copies, so keep extension auto-update enabled. The value must be a boolean (Windows registry: REG_DWORD 1; macOS profile: <true/>), not the string 'true'; confirm that chrome://policy lists it under this extension. Changing this value takes effect at once, without restarting the extension.",
+      "type": "boolean"
+    },
+    "forceLoginOrgUUID": {
+      "title": "Force Login Organization UUID",
+      "description": "Restricts which Anthropic organization(s) the extension can be used with. Accepts either a single UUID string or a JSON-encoded array of UUID strings. If the signed-in user's organization is not in this list, the extension shows a blocking page with a log out button. When 'thirdPartyDesktopMode' is set to true, set exactly one UUID: it is the organization Claude Desktop must prove it is signed in to before it may control this browser. Without that pin, a Claude Desktop of a third-party deployment may take control only if its organization is in this list (any organization when the list is unset).",
+      "type": "string"
+    }
+  }
+}

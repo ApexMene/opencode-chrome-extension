@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Opencode — Options</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0F0F0F; color: #E8E8E8; padding: 24px; max-width: 600px; }
+    h1 { font-size: 18px; margin-bottom: 8px; }
+    p { font-size: 13px; color: #888; line-height: 1.5; }
+    label { display: block; margin-top: 16px; font-size: 13px; font-weight: 600; }
+    input { margin-top: 6px; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #2A2A2A; background: #1A1A1A; color: #E8E8E8; }
+    small { color: #666; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>🪨 Opencode — Options</h1>
+  <p>Eredita da Claude 1.0.90_0. Configura bridge verso opencode.</p>
+  <label>opencode HTTP URL
+    <input id="opencode-url" type="text" placeholder="http://localhost:4096" value="http://localhost:4096" />
+    <small>Bridge locale opencode. Default <code>http://localhost:4096</code></small>
+  </label>
+  <label>Gruppo schede — titolo
+    <input type="text" value="Opencode" disabled />
+    <small>Colore: purple (fisso, come Claude → Opencode viola)</small>
+  </label>
+  <p style="margin-top:20px; font-size:11px; color:#555;">Key rimosso dal manifest (dev mode). Rebrand glow #D97757 → #7C3AED.</p>
+  <script>
+    const input = document.getElementById('opencode-url');
+    chrome.storage?.sync?.get?.(['opencodeUrl'], (v) => { if (v?.opencodeUrl) input.value = v.opencodeUrl; });
+    input.addEventListener('change', () => chrome.storage?.sync?.set?.({ opencodeUrl: input.value }));
+  </script>
+</body>
+</html>

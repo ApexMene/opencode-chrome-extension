@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Opencode</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --purple: #7C3AED; --purple-light: #A78BFA; --bg: #0F0F0F; --card: #1A1A1A; --text: #E8E8E8; --muted: #888; --border: #2A2A2A; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+    header { padding: 16px 20px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+    header .logo { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #7C3AED, #4F46E5); display: grid; place-items: center; font-size: 18px; }
+    header h1 { font-size: 16px; font-weight: 700; }
+    header p { font-size: 12px; color: var(--muted); }
+    main { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--purple-light); background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3); padding: 4px 10px; border-radius: 999px; align-self: flex-start; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--purple); box-shadow: 0 0 8px rgba(124,58,237,0.7); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .card h2 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+    .card p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 11px 16px; border-radius: 10px; border: 1px solid transparent; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .btn-primary { background: var(--purple); color: white; }
+    .btn-primary:hover { background: #6D28D9; }
+    .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+    .btn-ghost:hover { background: var(--card); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; }
+    .row .btn { flex: 1; }
+    .status { font-size: 11px; color: var(--muted); padding: 6px 0; min-height: 20px; }
+    .status.ok { color: #34D399; }
+    .status.err { color: #F87171; }
+    .divider { height: 1px; background: var(--border); margin: 2px 0; }
+    .opencode-box { background: #0a0a0a; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .opencode-box header { padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+    .opencode-box iframe { width: 100%; height: 360px; border: 0; background: #111; }
+    .hint { font-size: 11px; color: var(--muted); line-height: 1.4; }
+    code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; background: rgba(124,58,237,0.12); padding: 2px 5px; border-radius: 4px; color: var(--purple-light); }
+    footer { padding: 10px 16px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); text-align: center; }
+    a { color: var(--purple-light); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">🪨</div>
+    <div>
+      <h1>Opencode</h1>
+      <p>eredita da Claude · opencode bridge</p>
+    </div>
+  </header>
+
+  <main>
+    <div class="badge"><span class="dot"></span> Opencode ready — eredita da Claude</div>
+
+    <div class="card">
+      <h2>Gruppo schede</h2>
+      <p>Crea/riusa gruppo <code>Opencode</code> viola (chrome.tabGroups) e raggruppa tab corrente. Visibile nella barra schede come Claude.</p>
+      <div style="height:10px"></div>
+      <button id="btn-group" class="btn btn-ghost">📑 Crea gruppo Opencode</button>
+      <button id="btn-dissolve" class="btn btn-ghost" style="margin-top:8px; font-size:12px;">Sciogli gruppo</button>
+    </div>
+
+    <div class="card">
+      <h2>Glow + phantom cursor</h2>
+      <p>Bordo glow viola + cursore fantasma visibile su pagina come Claude quando agent lavora. Namespace <code>opencode-phantom-cursor</code>, colore <code>#7C3AED</code>.</p>
+      <div style="height:10px"></div>
+      <button id="btn-glow" class="btn btn-primary">✨ Attiva glow su tab corrente</button>
+      <div class="row" style="margin-top:8px;">
+        <button id="btn-cursor-demo" class="btn btn-ghost" style="font-size:12px;">Muovi cursore demo</button>
+        <button id="btn-stop" class="btn btn-ghost" style="font-size:12px;">■ Stop</button>
+      </div>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div class="opencode-box">
+      <header>opencode — <span id="opencode-status" style="text-transform:none; font-weight:400;">verifica…</span></header>
+      <iframe id="opencode-frame" src="about:blank" title="opencode"></iframe>
+      <div style="padding:8px 12px; display:flex; gap:8px;">
+        <button id="btn-open-opencode" class="btn btn-ghost" style="font-size:12px; padding:7px;">Apri localhost:4096 in tab</button>
+        <button id="btn-ping" class="btn btn-ghost" style="font-size:12px; padding:7px;">Ping bridge</button>
+      </div>
+    </div>
+
+    <p class="hint">Bridge: <code>ws://localhost:4096</code> / <code>http://localhost:4096</code>. Se opencode non gira, glow funziona comunque in locale.</p>
+    <div class="divider"></div>
+    <p class="hint">Clonato da <code>fcoeoabgfenejglbffodgkkbkcdhcgfn/1.0.90_0</code> — permissions/host_permissions identici. Rebrand: <code>#D97757 → #7C3AED</code>, <code>claude-phantom-cursor → opencode-phantom-cursor</code>.</p>
+  </main>
+
+  <footer>v0.1.0 · <a href="https://github.com" target="_blank">Load unpacked</a> da brave://extensions</footer>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
