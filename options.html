@@ -9,16 +9,41 @@
     h1 { font-size: 18px; margin-bottom: 8px; }
     p { font-size: 13px; color: #888; line-height: 1.5; }
     label { display: block; margin-top: 16px; font-size: 13px; font-weight: 600; }
-    input { margin-top: 6px; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #2A2A2A; background: #1A1A1A; color: #E8E8E8; }
+    input, select, textarea { margin-top: 6px; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #2A2A2A; background: #1A1A1A; color: #E8E8E8; box-sizing: border-box; }
+    textarea { min-height: 90px; font-family: monospace; font-size: 12px; }
     small { color: #666; font-size: 11px; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
   </style>
 </head>
 <body>
   <h1>🪨 Opencode — Options</h1>
-  <p>Eredita da Claude 1.0.90_0. Configura bridge verso opencode.</p>
+  <p>Parità Claude in Chrome. Configura bridge, permessi sito-per-sito, safety.</p>
   <label>opencode HTTP URL
     <input id="opencode-url" type="text" placeholder="http://localhost:4096" value="http://localhost:4096" />
     <small>Bridge locale opencode. Default <code>http://localhost:4096</code></small>
+  </label>
+  <div class="row">
+    <div>
+      <label>Permission mode
+        <select id="perm-mode">
+          <option value="ask">ask — chiedi ogni sito (come Claude Permissions Mode)</option>
+          <option value="follow_a_plan">follow_a_plan — solo siti approvati</option>
+          <option value="skip_all">skip_all — tutto permesso (tua macchina, tuo rischio)</option>
+        </select>
+      </label>
+    </div>
+  </div>
+  <label>Siti approvati (uno per riga, suffisso-match)
+    <textarea id="allowed-sites" placeholder="youtube.com&#10;github.com&#10;localhost"></textarea>
+    <small>Vuoto + ask = prompt al primo uso per sito. skip_all ignora lista.</small>
+  </label>
+  <label>Siti vietati (uno per riga — mai, nemmeno in skip_all)
+    <textarea id="blocked-sites" placeholder="banking.example.com&#10;salute.example.com"></textarea>
+    <small>Come categorie 1/2 Claude. Non usare su banking/salute/credenziali.</small>
+  </label>
+  <label>
+    <input id="safety-check" type="checkbox" checked style="width:auto; margin-right:8px;" />Safety check pre-action (conferma su acquisti/azioni sensibili)
   </label>
   <label>Gruppo schede — titolo
     <input type="text" value="Opencode" disabled />
@@ -26,9 +51,24 @@
   </label>
   <p style="margin-top:20px; font-size:11px; color:#555;">Key rimosso dal manifest (dev mode). Rebrand glow #D97757 → #4A7BA7.</p>
   <script>
-    const input = document.getElementById('opencode-url');
-    chrome.storage?.sync?.get?.(['opencodeUrl'], (v) => { if (v?.opencodeUrl) input.value = v.opencodeUrl; });
-    input.addEventListener('change', () => chrome.storage?.sync?.set?.({ opencodeUrl: input.value }));
+    const $ = (id) => document.getElementById(id);
+    const keys = ['opencodeUrl', 'permMode', 'allowedSites', 'blockedSites', 'safetyCheck'];
+    chrome.storage?.sync?.get?.(keys, (v) => {
+      if (v?.opencodeUrl) $('opencode-url').value = v.opencodeUrl;
+      if (v?.permMode) $('perm-mode').value = v.permMode;
+      if (v?.allowedSites) $('allowed-sites').value = v.allowedSites;
+      if (v?.blockedSites) $('blocked-sites').value = v.blockedSites;
+      if (v?.safetyCheck === false) $('safety-check').checked = false;
+    });
+    const save = () => chrome.storage?.sync?.set?.({
+      opencodeUrl: $('opencode-url').value,
+      permMode: $('perm-mode').value,
+      allowedSites: $('allowed-sites').value,
+      blockedSites: $('blocked-sites').value,
+      safetyCheck: $('safety-check').checked,
+    });
+    ['opencode-url', 'perm-mode', 'allowed-sites', 'blocked-sites', 'safety-check'].forEach((id) =>
+      $(id).addEventListener('change', save));
   </script>
 </body>
 </html>

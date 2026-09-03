@@ -127,10 +127,11 @@ const wsServer = net.createServer((sock) => {
 });
 wsServer.listen(WS_PORT, "127.0.0.1", () => log(`ws sidecar on 127.0.0.1:${WS_PORT}`));
 
+function extCount() { return [...clients].filter((c) => c.isExtension).length; }
 function sendCmd(cmd) {
   return new Promise((resolve) => {
     const id = `cmd-${++cmdSeq}-${Date.now()}`;
-    if (clients.size === 0) { resolve({ id, ok: false, result: "no extension connected" }); return; }
+    if (extCount() === 0) { resolve({ id, ok: false, result: "no extension connected" }); return; }
     const timer = setTimeout(() => {
       pending.delete(id);
       resolve({ id, ok: false, result: "ack timeout" });
@@ -153,22 +154,50 @@ const TOOLS = [
   { name: "browser_cdp_click", description: "REAL CDP mouse click at x,y (chrome.debugger, like Claude computer tool). Phantom cursor moves first.", inputSchema: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"] } },
   { name: "browser_cdp_type", description: "REAL CDP keyboard typing into the focused element (click it first with browser_cdp_click).", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } },
   { name: "browser_cdp_shot", description: "REAL CDP screenshot (jpeg base64) of the active tab, like Claude computer captureScreenshot.", inputSchema: { type: "object", properties: {} } },
+  { name: "browser_approve_site", description: "Approve a site hostname for agent control (ask mode). Pass host or omit for current tab.", inputSchema: { type: "object", properties: { host: { type: "string" } } } },
+  { name: "browser_quick", description: "Quick mode: run a compact op sequence in one call, e.g. 'N https://x.com; C 640,360; T hello; S'. Ops: G on/off, N url, C x,y, T text, V top_video, S shot.", inputSchema: { type: "object", properties: { ops: { type: "string" } }, required: ["ops"] } },
 ];
 
 async function runTool(name, args) {
   if (name === "browser_snapshot") {
-    return { connected: clients.size > 0, clients: clients.size, state, tool: currentTool, lastResult };
+    return { connected: extCount() > 0, clients: extCount(), state, tool: currentTool, lastResult };
   }
   if (name === "browser_debug_tabs") {
-    if (clients.size === 0) return { connected: false };
+    if (extCount() === 0) return { connected: false };
     state = "working"; currentTool = name;
     try { const ack = await sendCmd({ cmd: "debug_tabs" }); return { ack: ack.ok, tabs: ack.ok ? JSON.parse(ack.result || "[]") : null, error: ack.error }; }
     finally { state = "idle"; currentTool = null; }
   }
   if (name === "browser_debug_ping") {
-    if (clients.size === 0) return { connected: false };
+    if (extCount() === 0) return { connected: false };
     const ack = await sendCmd({ cmd: "debug_ping" });
     return { ack: ack.ok, result: ack.ok ? ack.result : null, error: ack.error, late: !ack.ok ? "check sidecar log for late/unknown ack" : undefined };
+  }
+  if (name === "browser_quick") {
+    if (extCount() === 0) return { connected: false };
+    const steps = String(args.ops || "").split(";").map((s) => s.trim()).filter(Boolean);
+    state = "working"; currentTool = name;
+    broadcast({ event: "working", tool: name });
+    const out = [];
+    try {
+      for (const st of steps) {
+        const op = st[0]?.toUpperCase(), rest = st.slice(1).trim();
+        let cmd = null;
+        if (op === "G") cmd = { cmd: "glow", on: /on|1|true/i.test(rest) };
+        else if (op === "N") cmd = { cmd: "navigate", url: rest };
+        else if (op === "C") { const [x, y] = rest.split(",").map(Number); cmd = { cmd: "cdp_click", x, y }; }
+        else if (op === "T") cmd = { cmd: "cdp_type", text: rest };
+        else if (op === "V") cmd = { cmd: "top_video" };
+        else if (op === "S") cmd = { cmd: "cdp_shot" };
+        if (!cmd) { out.push({ step: st, ok: false, error: "unknown op" }); continue; }
+        const ack = await sendCmd(cmd);
+        out.push({ step: st, ok: !!ack?.ok, result: ack?.ok ? String(ack.result || "").slice(0, 300) : ack?.result });
+      }
+    } finally {
+      state = "idle"; currentTool = null;
+      broadcast({ event: "done", tool: name, result: `${out.filter((o) => o.ok).length}/${out.length} ok` });
+    }
+    return { ack: out.every((o) => o.ok), steps: out, extensionConnected: extCount() > 0 };
   }
   const cmd = { cmd: name.replace("browser_", ""), ...args };
   if (name === "browser_navigate") { cmd.cmd = "navigate"; cmd.url = args.url; }
@@ -182,7 +211,7 @@ async function runTool(name, args) {
   state = "idle"; lastResult = ack?.result ?? null;
   broadcast({ event: "done", tool: name, result: lastResult, error: ack?.ok ? undefined : (ack?.result || "failed") });
   currentTool = null;
-  return { ack: !!ack?.ok, result: ack?.result ?? null, extensionConnected: clients.size > 0 };
+  return { ack: !!ack?.ok, result: ack?.result ?? null, extensionConnected: extCount() > 0 };
 }
 
 // ---- MCP stdio transport (NDJSON) ----

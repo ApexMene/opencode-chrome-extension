@@ -137,6 +137,51 @@ $("#btn-open-opencode")?.addEventListener("click", async () => {
 
 $("#btn-ping")?.addEventListener("click", pingOpencode);
 
+// Live session: read-only WS viewer on the sidecar. Every working/done broadcast
+// lands here + persisted history (max 50) in storage.local — like Claude's
+// session history, but local.
+const liveEl = $("#live-state");
+const histEl = $("#history");
+async function pushHistory(entry) {
+  try {
+    const store = await chrome.storage?.local?.get?.(["opHistory"]).catch(() => ({})) || {};
+    const hist = Array.isArray(store.opHistory) ? store.opHistory : [];
+    hist.push({ ts: Date.now(), ...entry });
+    await chrome.storage?.local?.set?.({ opHistory: hist.slice(-50) }).catch(() => {});
+    renderHistory(hist.slice(-50));
+  } catch {}
+}
+function renderHistory(hist) {
+  if (!histEl) return;
+  histEl.innerHTML = "";
+  for (const h of hist.slice().reverse()) {
+    const d = document.createElement("div");
+    const t = new Date(h.ts).toLocaleTimeString();
+    d.textContent = `${t} ${h.kind === "working" ? "⏳" : "✓"} ${h.tool || ""} ${h.result ? String(h.result).slice(0, 80) : ""}`;
+    histEl.appendChild(d);
+  }
+}
+function setLive(state, tool) {
+  if (!liveEl) return;
+  liveEl.textContent = state === "working" ? `⏳ ${tool || "working"}` : state === "done" ? "✓ idle" : state;
+  liveEl.style.color = state === "working" ? "#7EB0D6" : "#34D399";
+}
+function connectLive() {
+  let ws;
+  try { ws = new WebSocket("ws://127.0.0.1:7421"); } catch { setTimeout(connectLive, 5000); return; }
+  ws.onopen = () => { setLive("connected — waiting for agent", ""); };
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.event === "working") { setLive("working", m.tool); pushHistory({ kind: "working", tool: m.tool }); }
+    else if (m.event === "done") { setLive("done"); pushHistory({ kind: "done", tool: m.tool, result: m.result, error: m.error }); }
+    else if (m.event === "sync") { setLive(m.state || "idle"); }
+  };
+  ws.onclose = () => { setLive("sidecar off — avvia mcp-server"); setTimeout(connectLive, 5000); };
+  ws.onerror = () => { try { ws.close(); } catch {} };
+}
+
 // Init
 pingOpencode();
+connectLive();
+chrome.storage?.local?.get?.(["opHistory"]).then?.((v) => renderHistory(v?.opHistory || [])).catch(() => {});
 console.log("[Opencode sidepanel] ready");

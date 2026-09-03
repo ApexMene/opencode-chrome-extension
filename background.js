@@ -526,6 +526,24 @@ function scheduleSidecarRetry() { if (_scRetry) return; _scRetry = setTimeout(()
 function sidecarAck(id, ok, result, error) {
   try { _scWs?.send(JSON.stringify({ id, ok, result: String(result ?? "ok").slice(0, 600000), error: error ? String(error).slice(0, 500) : undefined })); } catch {}
 }
+function hostOf(url) { try { return new URL(url).hostname.toLowerCase(); } catch { return ""; } }
+function listMatch(host, listText) {
+  const items = String(listText || "").split(/[\s,]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return items.some((it) => host === it || host.endsWith("." + it));
+}
+async function permCheck(tabUrl, action) {
+  const store = await chrome.storage?.sync?.get?.(["permMode", "allowedSites", "blockedSites", "safetyCheck"]).catch(() => ({})) || {};
+  const mode = store.permMode || "ask";
+  const host = hostOf(tabUrl);
+  if (host && listMatch(host, store.blockedSites)) return { ok: false, reason: "blocked site " + host + " (never, even in skip_all)" };
+  if (mode === "skip_all") return { ok: true };
+  if (host && listMatch(host, store.allowedSites)) return { ok: true };
+  if (mode === "follow_a_plan") return { ok: false, reason: "site " + host + " not in approved list (follow_a_plan)" };
+  return { ok: false, reason: "site " + host + " not approved — approve in options page or via browser_approve_site (ask mode)" };
+}
+function sensitivePage(tabUrl) {
+  return /(bank|pay|checkout|login|signin|password|health|fiscal|agenziaentrate|inps)/i.test(tabUrl || "");
+}
 async function handleSidecarMsg(raw) {
   let m; try { m = JSON.parse(raw); } catch { return; }
   if (m.event === "sync") { _opBridgeState = m.state === "working" ? "working" : "idle"; return; }
@@ -544,8 +562,26 @@ async function handleSidecarMsg(raw) {
     return sidecarAck(m.id, true, JSON.stringify(brief));
   }
   if (m.cmd === "debug_ping") return sidecarAck(m.id, true, "pong");
+  if (m.cmd === "approve_site") {
+    const host = (m.host || "").toLowerCase().trim() || hostOf((await pickWorkTab())?.url || "");
+    if (!host) { sidecarAck(m.id, false, null, "no host to approve"); return; }
+    const store = await chrome.storage?.sync?.get?.(["allowedSites"]).catch(() => ({})) || {};
+    const cur = String(store.allowedSites || "").split(/[\s,]+/).filter(Boolean);
+    if (!cur.map((s) => s.toLowerCase()).includes(host)) cur.push(host);
+    await chrome.storage?.sync?.set?.({ allowedSites: cur.join("\n") }).catch(() => {});
+    return sidecarAck(m.id, true, "approved " + host);
+  }
   const tab = await pickWorkTab(); const tabId = tab?.id;
   if (!tabId) { sidecarAck(m.id, false, null, "no groupable tab"); return; }
+  if (m.cmd !== "debug_ping") {
+    const chk = await permCheck(tab.url || "", m.cmd);
+    if (!chk.ok) { sidecarAck(m.id, false, null, chk.reason); return; }
+    const store = await chrome.storage?.sync?.get?.(["safetyCheck"]).catch(() => ({})) || {};
+    if (store.safetyCheck !== false && ["cdp_click", "cdp_type", "click", "type_text", "type"].includes(m.cmd) && sensitivePage(tab.url || "") && !m.confirmed) {
+      sidecarAck(m.id, false, null, "sensitive page — resend with confirmed:true after user approval");
+      return;
+    }
+  }
   try {
     switch (m.cmd) {
       case "navigate": await chrome.tabs.update(tabId, { url: m.url }).catch(()=>{}); await waitForTabReady(tabId); await onWorkingUI(tabId); return sidecarAck(m.id, true, "navigated");
