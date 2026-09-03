@@ -1,4 +1,5 @@
 (function(){
+  let __ocTopBusy = false; // per-registration (not window.*): content-script copy and scripting-injected copy each own one; window.* would self-deny via first-response-wins
   function findSearchInput(){
     return document.querySelector('input[name="search_query"]')
         || document.querySelector('ytd-searchbox input')
@@ -71,8 +72,8 @@
       return true;
     }
     if(msg.type === 'OPENCODE_CLICK_TOP_VIDEO'){
-      if(window.__ocTopBusy){ try{sendResponse({success:false,error:'busy'});}catch{} return true; }
-      window.__ocTopBusy = true;
+      if(__ocTopBusy){ try{sendResponse({success:false,error:'busy'});}catch{} return true; }
+      __ocTopBusy = true;
       (async()=>{
         try{
         const CARDS = ['ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-grid-video-renderer', 'ytd-compact-video-renderer'];
@@ -137,7 +138,7 @@
         await sendToTabCursor(cx,cy);
         setTimeout(()=>best.click(),600);
         sendResponse({success:true,views:bestViews,title:bestTitle,mode:bestMode||'most-viewed',feed:feedCount,url:location.href});
-        }finally{ window.__ocTopBusy = false; }
+        }finally{ __ocTopBusy = false; }
       })();
       return true;
     }
