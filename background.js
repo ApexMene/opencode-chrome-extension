@@ -122,18 +122,20 @@ function sendMsg1(tabId, msg, timeoutMs = 10000) {
     new Promise((res) => setTimeout(() => res({ settled: false }), timeoutMs)),
   ]);
 }
+const SLOW_MSGS = { OPENCODE_CLICK_TOP_VIDEO: 30000 };
 async function sendToTab(tabId, msg, retries = 3, opts = {}) {
   const reloadFallback = opts.reload !== false;
+  const slowMs = SLOW_MSGS[msg.type] || 10000;
   if (!tabId) return broadcastToAllTabs(msg);
   for (let i = 0; i < retries; i++) {
     try {
-      const a = await sendMsg1(tabId, msg);
+      const a = await sendMsg1(tabId, msg, slowMs);
       if (!a.settled) { console.log("[Opencode bg] sendToTab timeout attempt", i, msg.type); }
       else if (a.err) { console.log("[Opencode bg] sendToTab send error attempt", i, a.err.slice(0, 120)); }
       else { const r = a.r; if (r && r.success !== false) return r; }
       await ensureContentScript(tabId);
       await new Promise((r2) => setTimeout(r2, 800));
-      const b = await sendMsg1(tabId, msg);
+      const b = await sendMsg1(tabId, msg, slowMs);
       if (b.settled && !b.err && b.r && b.r.success !== false) return b.r;
     } catch {}
     await new Promise((r) => setTimeout(r, 800));
